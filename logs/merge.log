@@ -1,0 +1,23 @@
+[merge] inserting opinions (0/12 already done)...
+  shard 0: already present, skipped
+  shard 1: already present, skipped
+  shard 2: already present, skipped
+  shard 3: already present, skipped
+  shard 4: already present, skipped
+  shard 5: already present, skipped
+  shard 6: already present, skipped
+  shard 7: 942s
+  shard 8: 1354s
+  shard 9: 944s
+  shard 10: 1005s
+  shard 11: 1440s
+[merge] opinions=10,798,347
+[merge] building cites from citormap × anchors...
+  map edges: 12.3 min
+  anchor-only edges: 7.4 min
+[merge] cites=105,689,491 (51,527,233 with context, 51,527,233 with char_pos)
+[merge] rebuilding FTS5 index (long)...
+[merge] FTS5 rebuilt in 235.2 min
+[merge] indexes + analyze...
+[merge] complete
+=== 18:16:45 MERGE EXIT 0 ===

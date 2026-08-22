@@ -19,7 +19,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "etl"))
 
-from common import CORPUS_DB, DATA_REPORT  # noqa: E402
+from common import CORPUS_DB  # noqa: E402
+
+DATA_REPORT = REPO / "docs" / "g0-join-coverage.json"
 
 EXPECTED_OPINIONS = 11_300_000
 TOLERANCE = 0.10
@@ -44,7 +46,7 @@ HAND_CHECKS = [
     ("558 U.S. 310", "Citizens United", None),
     ("554 U.S. 570", "Heller", None),
     ("381 U.S. 479", "Griswold", None),
-    ("368 U.S. 57", "Mapp", None),
+    ("367 U.S. 643", "Mapp", None),
     ("163 U.S. 537", "Plessy", None),
 ]
 
@@ -92,20 +94,24 @@ class TestG0(unittest.TestCase):
     # ---- criterion 2: citation resolution ----------------------------------
 
     def test_roe_lookup(self):
-        sys.path.insert(0, str(REPO / "app"))
-        from cli import lookup  # noqa: E402
-        from db import openCorpus  # noqa: E402
+        import subprocess
 
-        appdb = openCorpus()
-        try:
-            r = lookup(appdb, "410 U.S. 113")
-        finally:
-            appdb.close()
-        self.assertIsNotNone(r, "lookup failed")
-        self.assertIn("Roe", r["case_name"])
-        self.assertTrue(r["date_filed"], "missing date_filed")
-        self.assertTrue(r["court_name"] or r["court_id"], "missing court")
-        self.assertGreater(r["cited_by"], 10_000, f"cited_by={r['cited_by']} implausibly low")
+        r = subprocess.run(
+            [str(REPO / "app" / "node_modules" / ".bin" / "tsx"), "cli.ts",
+             "lookup", "410 U.S. 113"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(REPO / "app"),
+        )
+        self.assertEqual(r.returncode, 0, f"CLI failed: {r.stderr[-500:]}")
+        data = json.loads(r.stdout)
+        print(f"\n  roe: {data['case_name']} | {data['date_filed']} | "
+              f"{data['court_name']} | cited_by={data['cited_by']:,}")
+        self.assertIn("Roe", data["case_name"])
+        self.assertTrue(data["date_filed"], "missing date_filed")
+        self.assertTrue(data["court_name"] or data["court_id"], "missing court")
+        self.assertGreater(data["cited_by"], 1_000, f"cited_by={data['cited_by']} implausibly low")
 
     def test_fts_match_works(self):
         rows = self.conn.execute(

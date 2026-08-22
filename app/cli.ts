@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { openCorpus, type LookupResult } from "./lib/db.js";
 
 const REPORTER_ALIASES: Record<string, string> = {
@@ -30,12 +31,14 @@ export function lookup(db: ReturnType<typeof openCorpus>, input: string): Lookup
 
   const rows = db
     .prepare(
-      `SELECT cs.cluster_id, cs.volume, cs.reporter, cs.page, cs.type,
+      `SELECT DISTINCT cs.cluster_id, cs.volume, cs.reporter, cs.page, cs.type,
               o.id AS opinion_id, o.case_name, o.case_name_short, o.date_filed,
               o.court_id, o.precedential_status, o.citation_count
        FROM citation_strings cs
        LEFT JOIN opinions o ON o.cluster_id = cs.cluster_id
-       WHERE cs.volume = ? AND cs.reporter = ? AND cs.page = ?`
+       WHERE cs.volume = ? AND cs.reporter = ? AND cs.page = ?
+       ORDER BY CASE WHEN o.type LIKE '%lead%' THEN 0
+                     WHEN o.type LIKE '%combined%' THEN 1 ELSE 2 END, o.id`
     )
     .all(cite.volume, cite.reporter, cite.page) as Array<
     LookupResult & { volume: string; reporter: string; page: string; type: string }
@@ -43,15 +46,19 @@ export function lookup(db: ReturnType<typeof openCorpus>, input: string): Lookup
 
   if (rows.length === 0) return null;
   const first = rows[0];
-  const opinionId = first.opinion_id;
+  const clusterId = first.cluster_id;
 
   let citedBy = 0;
-  if (opinionId != null) {
+  if (clusterId != null) {
     citedBy =
       (
         db
-          .prepare(`SELECT count(DISTINCT citing_id) AS n FROM cites WHERE cited_id = ?`)
-          .get(opinionId) as { n: number } | undefined
+          .prepare(
+            `SELECT count(DISTINCT ci.citing_id) AS n FROM cites ci
+             JOIN opinions po ON po.id = ci.cited_id
+             WHERE po.cluster_id = ?`
+          )
+          .get(clusterId) as { n: number } | undefined
       )?.n ?? 0;
   }
 
@@ -66,7 +73,7 @@ export function lookup(db: ReturnType<typeof openCorpus>, input: string): Lookup
   }
 
   return {
-    opinion_id: opinionId ?? -1,
+    opinion_id: first.opinion_id ?? -1,
     cluster_id: first.cluster_id,
     case_name: first.case_name,
     case_name_short: first.case_name_short,
@@ -106,6 +113,6 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

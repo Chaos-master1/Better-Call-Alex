@@ -122,67 +122,80 @@ def stage_clusters_join():
     if not joined_marker.exists():
         conn.execute("PRAGMA journal_mode=OFF")
         conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA cache_size=-262144")
         conn.execute(
-            """CREATE TABLE IF NOT EXISTS clusters (
+            """CREATE TABLE IF NOT EXISTS raw_clusters (
+                id INTEGER PRIMARY KEY, date_filed TEXT, case_name TEXT,
+                case_name_short TEXT, precedential_status TEXT,
+                citation_count INTEGER, blocked INTEGER DEFAULT 0,
+                docket_id INTEGER
+            )"""
+        )
+        src = RAW / "opinion-clusters-2026-06-30.csv"
+        n_raw = conn.execute("SELECT count(*) FROM raw_clusters").fetchone()[0]
+        if n_raw == 0:
+            tick = progress_logger("clusters", every=1_000_000)
+            batch = []
+            for i, row in enumerate(open_csv_plain(src)):
+                if i == 0:
+                    idx = header_index(row)
+                    continue
+                cid = guard_int(row[idx["id"]])
+                if cid is None:
+                    continue
+                batch.append((
+                    cid,
+                    row[idx["date_filed"]] or None,
+                    row[idx["case_name"]] or None,
+                    row[idx["case_name_short"]] or None,
+                    row[idx["precedential_status"]] or None,
+                    guard_int(row[idx["citation_count"]], 0),
+                    parse_bool(row[idx["blocked"]]),
+                    guard_int(row[idx["docket_id"]]),
+                ))
+                tick()
+                if len(batch) >= 500_000:
+                    conn.executemany("INSERT OR REPLACE INTO raw_clusters VALUES (?,?,?,?,?,?,?,?)", batch)
+                    conn.commit()
+                    batch.clear()
+            if batch:
+                conn.executemany("INSERT OR REPLACE INTO raw_clusters VALUES (?,?,?,?,?,?,?,?)", batch)
+                conn.commit()
+
+        print("[clusters] joining docket->court on disk...")
+        t0 = time.time()
+        conn.execute("DROP TABLE IF EXISTS clusters")
+        conn.execute(
+            """CREATE TABLE clusters (
                 id INTEGER PRIMARY KEY, date_filed TEXT, case_name TEXT,
                 case_name_short TEXT, precedential_status TEXT,
                 citation_count INTEGER, blocked INTEGER DEFAULT 0,
                 docket_id INTEGER, court_id TEXT
             )"""
         )
-        court_map = dict(
-            conn.execute(
-                "SELECT id, court_id FROM docket_court WHERE court_id IS NOT NULL AND court_id != ''"
-            ).fetchall()
+        conn.execute(
+            """INSERT INTO clusters
+               SELECT r.id, r.date_filed, r.case_name, r.case_name_short,
+                      r.precedential_status, r.citation_count, r.blocked,
+                      r.docket_id, d.court_id
+               FROM raw_clusters r
+               LEFT JOIN docket_court d ON d.id = r.docket_id"""
         )
-        src = RAW / "opinion-clusters-2026-06-30.csv"
-        tick = progress_logger("clusters", every=1_000_000)
-        batch = []
-        resolved = total = 0
-        last_did, last_court = None, None
-        for i, row in enumerate(open_csv_plain(src)):
-            if i == 0:
-                idx = header_index(row)
-                continue
-            cid = guard_int(row[idx["id"]])
-            if cid is None:
-                continue
-            total += 1
-            did = guard_int(row[idx["docket_id"]])
-            if did == last_did:
-                court_id = last_court
-            else:
-                court_id = court_map.get(did)
-                last_did, last_court = did, court_id
-            resolved += court_id is not None
-            batch.append((
-                cid,
-                row[idx["date_filed"]] or None,
-                row[idx["case_name"]] or None,
-                row[idx["case_name_short"]] or None,
-                row[idx["precedential_status"]] or None,
-                guard_int(row[idx["citation_count"]], 0),
-                parse_bool(row[idx["blocked"]]),
-                did,
-                court_id,
-            ))
-            tick()
-            if len(batch) >= 500_000:
-                conn.executemany("INSERT OR REPLACE INTO clusters VALUES (?,?,?,?,?,?,?,?,?)", batch)
-                conn.commit()
-                batch.clear()
-        if batch:
-            conn.executemany("INSERT OR REPLACE INTO clusters VALUES (?,?,?,?,?,?,?,?,?)", batch)
-            conn.commit()
+        conn.commit()
+        total, resolved = conn.execute(
+            "SELECT count(*), count(court_id) FROM clusters"
+        ).fetchone()
         pct = resolved / max(total, 1) * 100
         report = {
             "clusters_total": total,
             "court_id_resolved": resolved,
             "join_coverage_pct": round(pct, 2),
+            "join_seconds": round(time.time() - t0),
         }
         DATA_REPORT.parent.mkdir(exist_ok=True)
         DATA_REPORT.write_text(json.dumps(report, indent=2))
-        print(f"[clusters] JOIN COVERAGE docket->court: {resolved:,}/{total:,} = {pct:.2f}%")
+        print(f"[clusters] JOIN COVERAGE docket->court: {resolved:,}/{total:,} = {pct:.2f}%"
+              f" ({report['join_seconds']}s)")
         mark_done(joined_marker)
     else:
         n = conn.execute("SELECT count(*) FROM clusters").fetchone()[0]
@@ -511,21 +524,40 @@ def stage_merge(total):
             char_pos INTEGER, context TEXT);
     """)
 
-    for i in range(total):
-        path = str(SHARDS / f"shard_{i}.sqlite").replace("'", "''")
-        conn.execute(f"ATTACH DATABASE '{path}' AS sh{i}")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS _merge_shards (
+               i INTEGER PRIMARY KEY
+           ) WITHOUT ROWID"""
+    )
+    merged = {r[0] for r in conn.execute("SELECT i FROM _merge_shards")}
 
     m_opinions = SHARDS / "merge.opinions.done"
     if not m_opinions.exists():
-        print("[merge] inserting opinions...")
+        print(f"[merge] inserting opinions ({len(merged)}/{total} already done)...", flush=True)
         for i in range(total):
+            if i in merged:
+                continue
+            path = str(SHARDS / f"shard_{i}.sqlite").replace("'", "''")
+            conn.execute(f"ATTACH DATABASE '{path}' AS sh{i}")
+            min_id = conn.execute(f"SELECT min(id) FROM sh{i}.opinions").fetchone()[0]
+            if min_id is not None and conn.execute(
+                "SELECT 1 FROM main.opinions WHERE id=?", (min_id,)
+            ).fetchone():
+                conn.execute("INSERT OR IGNORE INTO _merge_shards VALUES (?)", (i,))
+                conn.commit()
+                conn.execute(f"DETACH DATABASE sh{i}")
+                print(f"  shard {i}: already present, skipped", flush=True)
+                continue
             t0 = time.time()
+            conn.execute("BEGIN")
             conn.execute(f"INSERT INTO main.opinions SELECT * FROM sh{i}.opinions")
             conn.execute(
                 f"INSERT INTO main.anchors SELECT citing_id,cited_id,char_pos,context"
                 f" FROM sh{i}.anchors")
+            conn.execute("INSERT INTO main._merge_shards VALUES (?)", (i,))
             conn.commit()
-            print(f"  shard {i}: {time.time()-t0:.0f}s")
+            conn.execute(f"DETACH DATABASE sh{i}")
+            print(f"  shard {i}: {time.time()-t0:.0f}s", flush=True)
         mark_done(m_opinions)
     n_ops = conn.execute("SELECT count(*) FROM opinions").fetchone()[0]
     print(f"[merge] opinions={n_ops:,}")
@@ -534,6 +566,7 @@ def stage_merge(total):
     if not m_cites.exists():
         print("[merge] building cites from citormap × anchors...")
         t0 = time.time()
+        conn.execute("DELETE FROM cites")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_anchors"
                      " ON anchors(citing_id, cited_id)")
         conn.execute("""
@@ -590,8 +623,6 @@ def stage_merge(total):
         conn.commit()
         mark_done(m_final)
 
-    for i in range(total):
-        conn.execute(f"DETACH DATABASE sh{i}")
     conn.close()
     print("[merge] complete")
 
