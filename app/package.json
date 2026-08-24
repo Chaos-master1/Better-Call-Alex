@@ -6,7 +6,9 @@
   "scripts": {
     "alex": "tsx cli.ts",
     "eval": "tsx ../evals/run_eval.ts",
-    "bench": "tsx ../evals/bench_latency.ts"
+    "bench": "tsx ../evals/bench_latency.ts",
+    "test": "tsx --test \"lib/**/*.test.ts\" && tsx ../evals/run_g2_fixtures.ts",
+    "g2": "tsx ../evals/run_g2_fixtures.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

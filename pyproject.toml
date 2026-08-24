@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Local US case-law research workbench — ETL (numpy/scipy for authority build)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "eyecite>=2.7.8",
     "numpy>=2.5.2",
     "scipy>=1.18.1",
 ]
