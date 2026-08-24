@@ -20,8 +20,12 @@ const P95_BUDGET_MS = 500;
 function main() {
   const db = openCorpus();
   try {
+    const blockedStmt = db.prepare(
+      "SELECT blocked FROM opinions WHERE id = ?"
+    );
     const all: number[] = [];
     const colds: number[] = [];
+    let invariantFailures = 0;
     console.log("query".padEnd(46), "min", "med", "max (ms)");
     for (const q of QUERIES) {
       // one unmeasured warmup: we gate steady-state service latency;
@@ -36,6 +40,15 @@ function main() {
         const hits = search(db, q);
         times.push(performance.now() - s0);
         if (hits.length === 0) console.error(`  !! empty result: ${q}`);
+      }
+      // §9.7 standing invariant: a de-indexed opinion must never surface.
+      const hits = search(db, q);
+      for (const h of hits) {
+        const b = blockedStmt.get(h.opinion_id) as { blocked: number } | undefined;
+        if (b?.blocked) {
+          console.error(`  !! BLOCKED opinion surfaced: ${h.opinion_id} (${q})`);
+          invariantFailures++;
+        }
       }
       times.sort((a, b) => a - b);
       const min = times[0];
@@ -52,6 +65,10 @@ function main() {
       `warm p95=${Math.round(p95)}ms  n=${all.length}  budget=${P95_BUDGET_MS}ms\n` +
       `cold first-touch: min=${Math.round(colds[0])}ms max=${Math.round(colds[colds.length - 1])}ms`
     );
+    if (invariantFailures > 0) {
+      console.error(`FAIL: ${invariantFailures} blocked-opinion invariant violation(s)`);
+      process.exit(1);
+    }
     if (p95 > P95_BUDGET_MS) {
       console.error("FAIL: warm p95 exceeds budget");
       process.exit(1);

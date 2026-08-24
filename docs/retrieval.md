@@ -20,10 +20,12 @@ Quality gate: `pnpm eval` (golden set, precision@10). Latency gate:
    - `blocked = 0` excluded (§9.7 de-indexing honored).
    - jurisdiction: court subtree via recursive CTE over
      `courts.id / jurisdiction / citation_string → parent_id` children.
-4. **Adaptive pool escalation**: pools of 200 → 2,000 → 20,000 until the
+4. **Adaptive pool escalation**: pools of 1,000 → 20,000 until the
    filtered pool holds ≥ limit distinct clusters. Escalation exists because a
    global top-200 starves narrow jurisdictions (CA published-in-top-200 was
-   0–6 across doctrine queries — measured in g0-audit).
+   0–6 across doctrine queries — measured in g0-audit). Rung 1 is large on
+   purpose: FTS5 rank cost is LIMIT-independent (measured), so widening the
+   pool is nearly free and lets the authority multiplier rescue landmarks.
 5. **Parenthetical agreement** (§3 step 3): top-500 ranked hits over
    `parentheticals_fts` joined back by rowid to `parentheticals.described_id`;
    each hit gains multiplier `1 + 0.25·ln(1+hits)`.

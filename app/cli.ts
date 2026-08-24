@@ -39,6 +39,7 @@ export function lookup(db: ReturnType<typeof openCorpus>, input: string): Lookup
        LEFT JOIN opinions o ON o.cluster_id = cs.cluster_id
        WHERE cs.volume = ? AND cs.reporter = ? AND cs.page = ?
          AND o.id IS NOT NULL
+         AND o.blocked = 0
        ORDER BY CASE WHEN o.type LIKE '%lead%' THEN 0
                      WHEN o.type LIKE '%combined%' THEN 1 ELSE 2 END, o.id`
     )

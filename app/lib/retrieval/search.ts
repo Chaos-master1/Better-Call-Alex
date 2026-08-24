@@ -104,6 +104,7 @@ interface PoolRow {
   court_id: string | null;
   precedential_status: string | null;
   ocr: number;
+  blocked: number;
   pagerank: number | null;
   recent_cites_2y: number | null;
   treatment_flags: number | null;
@@ -121,6 +122,7 @@ function fetchPool(
       .prepare(
         `SELECT o.id, o.cluster_id, o.case_name, o.case_name_short,
                 o.date_filed, o.court_id, o.precedential_status, o.ocr,
+                o.blocked,
                 a.pagerank, a.recent_cites_2y, a.treatment_flags
            FROM opinions o
            LEFT JOIN authority a ON a.opinion_id = o.id
@@ -241,6 +243,7 @@ export function search(
       if (!m) continue; // orphan edge noise cannot happen here, defensive
       if (m.precedential_status == null ||
           !SEARCHABLE_STATUS.includes(m.precedential_status)) continue;
+      if (EXCLUDE_BLOCKED && m.blocked) continue; // §9.7 de-indexing honored
       if (courts && (m.court_id == null || !courts.has(m.court_id))) continue;
       m.bm25 = r.bm25;
       candidates.push(m);
