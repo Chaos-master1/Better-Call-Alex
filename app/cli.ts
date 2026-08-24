@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { openCorpus, type LookupResult } from "./lib/db.js";
+import { search } from "./lib/retrieval/search.js";
 
 const REPORTER_ALIASES: Record<string, string> = {
   "u.s.": "U.S.",
@@ -108,8 +109,40 @@ function main() {
     } finally {
       db.close();
     }
+  } else if (cmd === "search") {
+    const flags: Record<string, string> = {};
+    const positional: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--jurisdiction" || args[i] === "-j") {
+        flags.jurisdiction = args[++i] ?? "";
+      } else if (args[i] === "--limit") {
+        flags.limit = args[++i] ?? "";
+      } else {
+        positional.push(args[i]);
+      }
+    }
+    const query = positional.join(" ");
+    const db = openCorpus();
+    try {
+      const t0 = performance.now();
+      const hits = search(db, query, {
+        jurisdiction: flags.jurisdiction || undefined,
+        limit: flags.limit ? Number(flags.limit) : undefined,
+      });
+      const ms = Math.round(performance.now() - t0);
+      if (hits.length === 0) {
+        console.log(`NO AUTHORITY FOUND IN CORPUS for "${query}"`);
+        console.error(`(${ms} ms)`);
+        process.exit(1);
+      }
+      console.log(JSON.stringify({ query, elapsed_ms: ms, hits }, null, 2));
+    } finally {
+      db.close();
+    }
   } else {
-    console.error("usage: alex lookup \"410 U.S. 113\"   (search arrives in G1)");
+    console.error(
+      'usage: alex lookup "410 U.S. 113"  |  alex search "qualified immunity clearly established" [--jurisdiction cal] [--limit 10]'
+    );
     process.exit(2);
   }
 }

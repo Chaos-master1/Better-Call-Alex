@@ -1,7 +1,7 @@
 [project]
 name = "better-call-alex"
 version = "0.1.0"
-description = "Local US case-law research workbench — ETL package (stdlib only)"
+description = "Local US case-law research workbench — ETL (numpy/scipy for authority build)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.5.2",

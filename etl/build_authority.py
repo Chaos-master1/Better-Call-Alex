@@ -45,20 +45,34 @@ BIT = {"ovr": 1, "abg": 2, "dis": 4, "buts": 8, "dtf": 16}
 
 
 def load_opinions(conn):
-    """All opinion ids (sorted int64) + filing dates as YYYYMMDD ints (0 if bad)."""
-    ids, dates = [], []
-    for oid, df in conn.execute("SELECT id, date_filed FROM opinions"):
-        d = 0
-        if df and len(df) == 10:
-            try:
-                y, m, dd = df[:4], df[5:7], df[8:10]
-                if 1600 <= int(y) <= 2026:
-                    d = int(y) * 10000 + int(m) * 100 + int(dd)
-            except ValueError:
-                d = 0
-        ids.append(oid)
-        dates.append(d)
-    return np.asarray(ids, dtype=np.int64), np.asarray(dates, dtype=np.int32)
+    """All opinion ids (sorted int64) + filing dates as YYYYMMDD ints (0 if bad).
+
+    Chunked into preallocated numpy arrays: list-of-Python-ints costs ~500 MB
+    here and contributed to the OOM kill of 2026-08-24 (journalctl).
+    """
+    n = conn.execute("SELECT count(*) FROM opinions").fetchone()[0]
+    ids = np.empty(n, dtype=np.int64)
+    dates = np.empty(n, dtype=np.int32)
+    cur = conn.execute("SELECT id, date_filed FROM opinions")
+    i = 0
+    while True:
+        rows = cur.fetchmany(200_000)
+        if not rows:
+            break
+        for oid, df in rows:
+            d = 0
+            if df and len(df) == 10:
+                try:
+                    y, m, dd = df[:4], df[5:7], df[8:10]
+                    if 1600 <= int(y) <= 2026:
+                        d = int(y) * 10000 + int(m) * 100 + int(dd)
+                except ValueError:
+                    d = 0
+            ids[i] = oid
+            dates[i] = d
+            i += 1
+    order = np.argsort(ids)
+    return ids[order], dates[order]
 
 
 # ---------------------------------------------------------------- scan
@@ -141,60 +155,78 @@ def scan_stage(conn, outdir=AUTH_DIR, chunk_rows=5_000_000):
 # ---------------------------------------------------------------- pagerank
 
 def load_edges(outdir=AUTH_DIR):
-    """Concatenate edge chunks, dedupe pairs via flat int64 keys.
+    """Deduped edge arrays as int64 ids.
 
-    Opinion ids are < 2**25 (measured max 11,258,350), so (src, dst) packs into
-    one int64: cheaper than np.unique(axis=1) by half the peak RAM.
+    Memory-safe path (OOM kill of 2026-08-24): one preallocated key buffer
+    filled part-by-part, in-place sort, then a single masked copy — peak
+    ~2×845 MB instead of ~5 GB of stacked temporaries.
+
+    If edges_unique.npy exists (written by pagerank_stage), loads it directly.
     """
-    parts = sorted(Path(outdir).glob("edges_part*.npy"))
+    outdir = Path(outdir)
+    cached = outdir / "edges_unique.npz"
+    if cached.exists():
+        z = np.load(cached)
+        return z["src"], z["dst"]
+    parts = sorted(outdir.glob("edges_part*.npy"))
     assert parts, "run `scan` first"
-    srcs, dsts = [], []
+    total = sum(np.load(p, mmap_mode="r").shape[1] for p in parts)
+    k = np.int64(1) << np.int64(25)
+    key = np.empty(total, dtype=np.int64)
+    at = 0
     for p in parts:
         a = np.load(p)
-        srcs.append(a[0])
-        dsts.append(a[1])
-    src = np.concatenate(srcs)
-    dst = np.concatenate(dsts)
-    del srcs, dsts
-    k = np.int64(1) << np.int64(25)
-    key = np.unique(src.astype(np.int64) * k + dst.astype(np.int64))
-    return key // k, key % k
+        n = a.shape[1]
+        key[at:at + n] = a[0].astype(np.int64) * k + a[1].astype(np.int64)
+        at += n
+        del a
+    assert at == total
+    key.sort()
+    keep = np.empty(total, dtype=bool)
+    keep[0] = True
+    np.not_equal(key[1:], key[:-1], out=keep[1:])
+    src = key[keep] // k
+    dst = key[keep] % k
+    del key, keep
+    return src.astype(np.int32), dst.astype(np.int32)
 
 
-def pagerank_arrays(nodes, src, dst, alpha=0.85, tol=1e-8, max_iter=100,
+def pagerank_arrays(nodes, src, dst, alpha=0.85, tol=1e-5, max_iter=150,
                     verbose=False):
+    """Power iteration. Builds the TRANSPOSE directly as CSR (rows = cited
+    opinion, cols = citing, data = 1/outdeg(citing)) — no transpose copy.
+    float32 throughout: ranking-grade precision at ~1e-5 L1 tolerance."""
     import scipy.sparse as sp
 
     n = len(nodes)
     s = np.searchsorted(nodes, src).astype(np.int32)
     d = np.searchsorted(nodes, dst).astype(np.int32)
-    adj = sp.coo_matrix(
-        (np.ones(len(s), dtype=np.float64), (s, d)), shape=(n, n)).tocsr()
-    del s, d
-    # row-normalize by out-degree (dangling rows stay all-zero)
-    rs = np.asarray(adj.sum(axis=1)).ravel()
-    inv = np.where(rs > 0, 1.0 / np.where(rs > 0, rs, 1.0), 0.0)
-    adj.data *= inv[np.repeat(np.arange(n), np.diff(adj.indptr))]
-    at = adj.T.tocsr()
-    dangling = rs == 0
-    r = np.full(n, 1.0 / n)
+    outdeg = np.bincount(s, minlength=n)
+    inv = (1.0 / np.maximum(outdeg, 1)).astype(np.float32)[s]
+    adj_t = sp.coo_matrix(
+        (inv, (d, s)), shape=(n, n), dtype=np.float32).tocsr()
+    del s, d, inv
+    dangling = outdeg == 0
+    r = np.full(n, 1.0 / n, dtype=np.float32)
     for it in range(max_iter):
-        dang = r[dangling].sum()
-        rn = alpha * (at @ r + dang / n) + (1.0 - alpha) / n
-        err = np.abs(rn - r).sum()
+        dang = float(r[dangling].sum(dtype=np.float64))
+        rn = alpha * (adj_t @ r + dang / n) + (1.0 - alpha) / n
+        err = float(np.abs(rn - r).sum(dtype=np.float64))
         r = rn
         if verbose:
             print(f"[pagerank] iter {it + 1}: l1_delta={err:.3e}", flush=True)
         if err < tol:
             break
-    return r, it + 1
+    return r.astype(np.float64), it + 1
 
 
 def pagerank_stage(conn, outdir=AUTH_DIR):
+    outdir = Path(outdir)
     t0 = time.time()
     nodes, _ = load_opinions(conn)
     src, dst = load_edges(outdir)
-    print(f"[pagerank] nodes={len(nodes):,} dedup_edges={len(src):,}")
+    np.savez(outdir / "edges_unique.npz", src=src, dst=dst)  # reuse in write
+    print(f"[pagerank] nodes={len(nodes):,} dedup_edges={len(src):,}", flush=True)
     r, iters = pagerank_arrays(nodes, src, dst, verbose=True)
     np.save(Path(outdir) / "pagerank.npy", r)
     summary = {

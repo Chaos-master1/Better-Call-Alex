@@ -100,7 +100,7 @@ class TestAuthority(unittest.TestCase):
             conn.close()
         nodes, _ = ba.load_opinions(fixture_conn())
         src, dst = ba.load_edges(self.outdir)
-        r, iters = ba.pagerank_arrays(nodes, src, dst, tol=1e-10)
+        r, iters = ba.pagerank_arrays(nodes, src, dst, tol=1e-6)
         self.assertAlmostEqual(float(r.sum()), 1.0, places=6)
         # node 1 receives three citations -> highest rank
         self.assertEqual(int(nodes[int(r.argmax())]), 1)

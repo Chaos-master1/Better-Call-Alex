@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "alex": "tsx cli.ts"
+    "alex": "tsx cli.ts",
+    "eval": "tsx ../evals/run_eval.ts",
+    "bench": "tsx ../evals/bench_latency.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

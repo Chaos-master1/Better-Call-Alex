@@ -8,7 +8,8 @@ export const APP_PATH = path.join(REPO, "data", "app.sqlite");
 export function openCorpus(): Database.Database {
   const db = new Database(CORPUS_PATH, { readonly: true, fileMustExist: true });
   db.pragma("query_only = 1");
-  db.pragma("mmap_size = 268435456");
+  // 2 GB window: keeps hot regions of opinions_fts addressable across calls.
+  db.pragma("mmap_size = 2147483648");
   return db;
 }
 
