@@ -1,0 +1,8 @@
+{
+  "orphans": 3758,
+  "checked": 105689491,
+  "orphan_rate_pct": 0.0036,
+  "minutes": 13.2,
+  "check": "fk_cites_citing",
+  "finished": "2026-08-23T23:38:41"
+}

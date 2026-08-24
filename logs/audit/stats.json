@@ -1,0 +1,70 @@
+{
+  "rows": 10798347,
+  "elapsed_min": 15.1,
+  "precedential_status": {
+    "Published": 9027878,
+    "Unpublished": 995239,
+    "Errata": 1031,
+    "In-chambers": 15,
+    "Relating-to": 583,
+    "Separate": 674,
+    "Unknown": 772539,
+    "null": 22,
+    "200": 366
+  },
+  "types_top": [
+    [
+      "020lead",
+      5261255
+    ],
+    [
+      "010combined",
+      4304015
+    ],
+    [
+      "100trialcourt",
+      739140
+    ],
+    [
+      "040dissent",
+      257896
+    ],
+    [
+      "030concurrence",
+      138157
+    ],
+    [
+      "070rehearing",
+      36186
+    ],
+    [
+      "035concurrenceinpart",
+      35309
+    ],
+    [
+      "050addendum",
+      24557
+    ]
+  ],
+  "date_filed": {
+    "null": 21,
+    "bad_format": 0,
+    "min": "0019-01-31",
+    "max": "2028-04-13"
+  },
+  "case_name_null": 91168,
+  "case_name_short_null": 3361043,
+  "court_id": {
+    "null": 21,
+    "invalid_not_in_courts": 0
+  },
+  "author_id": {
+    "null": 9558092,
+    "resolved_in_judges": 1240255
+  },
+  "blocked_rows": 838152,
+  "ocr_rows": 4976594,
+  "citation_count_avg": 11.4,
+  "check": "stats",
+  "finished": "2026-08-23T22:46:30"
+}

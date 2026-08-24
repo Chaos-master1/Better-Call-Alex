@@ -1,0 +1,11 @@
+{
+  "sampled": 500,
+  "attempts": 1069,
+  "ok": 500,
+  "bad_beyond": 0,
+  "bad_fragment": 0,
+  "exact_rate_pct": 100.0,
+  "examples": [],
+  "check": "offsets",
+  "finished": "2026-08-23T22:29:53"
+}

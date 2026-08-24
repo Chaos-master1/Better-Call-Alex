@@ -1,0 +1,8 @@
+{
+  "orphans": 2904,
+  "checked": 18123788,
+  "orphan_rate_pct": 0.016,
+  "minutes": 0.1,
+  "check": "fk_cs_cluster",
+  "finished": "2026-08-23T23:12:04"
+}

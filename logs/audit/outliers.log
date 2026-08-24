@@ -1,0 +1,60 @@
+    ... 1,000,000 rows 2.0 min
+    ... 2,000,000 rows 5.0 min
+    ... 3,000,000 rows 7.7 min
+    ... 4,000,000 rows 10.0 min
+    ... 1 progress ticks, 624s elapsed
+    ... 5,000,000 rows 12.3 min
+    ... 6,000,000 rows 13.5 min
+    ... 7,000,000 rows 15.3 min
+    ... 8,000,000 rows 16.6 min
+    ... 2 progress ticks, 1019s elapsed
+    ... 9,000,000 rows 17.9 min
+    ... 10,000,000 rows 19.8 min
+{
+  "rows_scanned": 10798347,
+  "minutes": 21.5,
+  "date_future_gt2026": 1,
+  "date_ancient_lt1600": 1,
+  "date_malformed": 0,
+  "status_literal_200": 366,
+  "null_court_id": 21,
+  "samples": {
+    "bad_dates": [],
+    "future": [
+      {
+        "id": 11258350,
+        "date": "2028-04-13"
+      }
+    ],
+    "ancient": [
+      {
+        "id": 10775784,
+        "date": "0019-01-31"
+      }
+    ],
+    "weird_status": [
+      {
+        "id": 10820833,
+        "status": "200"
+      },
+      {
+        "id": 10820834,
+        "status": "200"
+      },
+      {
+        "id": 10820835,
+        "status": "200"
+      },
+      {
+        "id": 10820836,
+        "status": "200"
+      },
+      {
+        "id": 10820837,
+        "status": "200"
+      }
+    ]
+  },
+  "check": "outliers",
+  "finished": "2026-08-23T23:12:01"
+}

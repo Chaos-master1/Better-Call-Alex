@@ -1,0 +1,50 @@
+{
+  "sampled": 5000,
+  "found": 4743,
+  "empty": 1,
+  "short_lt500": 881,
+  "leaks": {
+    "html_tag": 9,
+    "entity": 0,
+    "nbsp": 0,
+    "control_char": 3
+  },
+  "leak_examples": {
+    "html_tag": [
+      {
+        "id": 84886,
+        "around": " the power of the party. In consequence <Sf -.that rule, the testimony of the subscr"
+      },
+      {
+        "id": 4039748,
+        "around": " 92$ Qfy Of P/vaIua^ zp/g-, ^_ tobF&TSfe<fjjfc &<O^Ql \u00ab}_ fd=n hoaj^ffno, s< T &(&\u00a3( Sl"
+      },
+      {
+        "id": 4047132,
+        "around": " - W^oio^-BBt) \u2014 Ab t V^so tBW l^A-A - m<s (i^.r^d. \u2022\u2022\u2022^ VWs^AA A^-Wre, Qm SU>9d \\0"
+      }
+    ],
+    "entity": [],
+    "nbsp": [],
+    "control_char": [
+      {
+        "id": 2969497,
+        "around": "5(&200(1'(' )25 )8//\u00107(;7 38%/,&$7,21 3XUVXDQW WR 6L[WK &LUFX"
+      },
+      {
+        "id": 2970737,
+        "around": "5(&200(1'(' )25 )8//\u00107(;7 38%/,&$7,21 3XUVXDQW WR 6L[WK &LUFX"
+      },
+      {
+        "id": 4073180,
+        "around": "ick F. McCann ATTACHMENT A Un off icia l\u0002C op y\u0002O ffic e\u0002o f\u0002C hri s\u0002D an iel \u0002D "
+      }
+    ]
+  },
+  "len_p10": 142,
+  "len_p50": 5795,
+  "len_p90": 27786,
+  "empty_rate_pct_sampled": 0.02,
+  "check": "clean",
+  "finished": "2026-08-23T22:30:19"
+}

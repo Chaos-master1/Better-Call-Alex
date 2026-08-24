@@ -1,0 +1,76 @@
+{
+  "queries": [
+    {
+      "q": "qualified immunity clearly established",
+      "naive_ms": 16459,
+      "naive_rows": 10,
+      "twophase_ms": 391,
+      "twophase_topN": 200,
+      "meta_join_ms": 2,
+      "cal_published_in_top200": 0
+    },
+    {
+      "q": "personal jurisdiction minimum contacts",
+      "naive_ms": 12837,
+      "naive_rows": 10,
+      "twophase_ms": 442,
+      "twophase_topN": 200,
+      "meta_join_ms": 1,
+      "cal_published_in_top200": 0
+    },
+    {
+      "q": "fourth amendment warrantless search vehicle",
+      "naive_ms": 6580,
+      "naive_rows": 10,
+      "twophase_ms": 257,
+      "twophase_topN": 200,
+      "meta_join_ms": 1,
+      "cal_published_in_top200": 3
+    },
+    {
+      "q": "negligence duty of care foreseeability",
+      "naive_ms": 20598,
+      "naive_rows": 10,
+      "twophase_ms": 1441,
+      "twophase_topN": 200,
+      "meta_join_ms": 3,
+      "cal_published_in_top200": 6
+    }
+  ],
+  "plan_naive": [
+    [
+      5,
+      0,
+      156,
+      "SCAN f VIRTUAL TABLE INDEX 0:M1"
+    ],
+    [
+      10,
+      0,
+      47,
+      "SEARCH o USING INTEGER PRIMARY KEY (rowid=?)"
+    ],
+    [
+      28,
+      0,
+      0,
+      "USE TEMP B-TREE FOR ORDER BY"
+    ]
+  ],
+  "plan_twophase": [
+    [
+      4,
+      0,
+      156,
+      "SCAN opinions_fts VIRTUAL TABLE INDEX 0:M1"
+    ],
+    [
+      20,
+      0,
+      0,
+      "USE TEMP B-TREE FOR ORDER BY"
+    ]
+  ],
+  "check": "latency",
+  "finished": "2026-08-24T00:05:43"
+}

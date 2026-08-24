@@ -1,0 +1,118 @@
+{
+  "total_shards": 12,
+  "all_ok": true,
+  "seams": [
+    {
+      "shard_boundary": 1,
+      "byte_offset": 29143077737,
+      "record_id": 11146138,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "General Electric Company",
+      "text_len": 967
+    },
+    {
+      "shard_boundary": 2,
+      "byte_offset": 58286155585,
+      "record_id": 2655894,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Esgar Corp. v. Commissioner",
+      "text_len": 35414
+    },
+    {
+      "shard_boundary": 3,
+      "byte_offset": 87429217982,
+      "record_id": 1825188,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Butler Taconite v. Roemer",
+      "text_len": 12533
+    },
+    {
+      "shard_boundary": 4,
+      "byte_offset": 116572249542,
+      "record_id": 3066078,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Olakunle Oshodi v. Eric H. Holder Jr.",
+      "text_len": 96675
+    },
+    {
+      "shard_boundary": 5,
+      "byte_offset": 145715306920,
+      "record_id": 10114735,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Benson v. Cornerstone Hospice & Palliative Care, Inc.",
+      "text_len": 13584
+    },
+    {
+      "shard_boundary": 6,
+      "byte_offset": 174858382712,
+      "record_id": 3755493,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "In the Matter of K.R.G., Unpublished Decision (12-18-2006)",
+      "text_len": 10285
+    },
+    {
+      "shard_boundary": 7,
+      "byte_offset": 204001435051,
+      "record_id": 4195142,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "State ex rel. Counsel for Dis. v. Gast",
+      "text_len": 52191
+    },
+    {
+      "shard_boundary": 8,
+      "byte_offset": 233144474190,
+      "record_id": 8065901,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Spraker v. Platt",
+      "text_len": 16405
+    },
+    {
+      "shard_boundary": 9,
+      "byte_offset": 262287536739,
+      "record_id": 4398561,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "United States v. Lee Bonner",
+      "text_len": 1907
+    },
+    {
+      "shard_boundary": 10,
+      "byte_offset": 291430605008,
+      "record_id": 9647878,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "JC Penney Co., Inc. v. Chavez",
+      "text_len": 15210
+    },
+    {
+      "shard_boundary": 11,
+      "byte_offset": 320573678531,
+      "record_id": 9641213,
+      "expected_leading_id_matches": true,
+      "n_fields": 22,
+      "in_corpus": true,
+      "case_name": "Commonwealth v. Maloney",
+      "text_len": 500
+    }
+  ],
+  "check": "seams",
+  "finished": "2026-08-23T22:30:21"
+}

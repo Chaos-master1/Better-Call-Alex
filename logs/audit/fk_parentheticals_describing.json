@@ -1,0 +1,8 @@
+{
+  "orphans": 618,
+  "checked": 6408887,
+  "orphan_rate_pct": 0.0096,
+  "minutes": 15.0,
+  "check": "fk_parentheticals_describing",
+  "finished": "2026-08-23T23:11:59"
+}
