@@ -86,9 +86,14 @@ test("quoted-span extraction finds straight and curly pairs", () => {
   );
 });
 
-test("probeFragment picks a middle window", () => {
-  const frag = probeFragment("word ".repeat(40), 60);
-  assert.equal(frag.length, 60);
+test("probeFragment picks whole words off the edges", () => {
+  const q = Array.from({ length: 40 }, (_, i) => `w${i}`).join(" ");
+  const frag = probeFragment(q);
+  const words = frag.split(" ");
+  assert.ok(words.length <= 12, `expected <=12 words, got ${words.length}`);
+  assert.ok(!frag.startsWith("w0 "), "first word must be dropped");
+  assert.ok(!frag.endsWith(" w39"), "last word must be dropped");
+  assert.ok(frag.startsWith("w"), "no mid-word shards");
 });
 
 // -------------------------------------------------------------- resolver

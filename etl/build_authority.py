@@ -15,8 +15,12 @@ Stages (each resumable, run in order):
   write     bulk-insert pagerank + recent_cites_2y + treatment_flags
 
 Recency anchor: SNAPSHOT_CUTOFF (2026-06-30 minus 2y), deterministic — §5.7.
-Treatment bits: 1 overrul*, 2 abrogat*, 4 distinguish*, 8 "but see",
-                16 "declined to follow".
+Treatment bits: 1 overrul*-family (overrul*, abrogat*, disapprov*, supersed*,
+                 "depart* from", "no longer good law/controlling/followed/
+                 valid" — extended 2026-08-24 against the LegalBench/Casetext
+                 Overruling set: recall .525 -> .774 at FPR .011 -> .014),
+                4 distinguish*, 8 "but see", 16 "declined to follow".
+("reject" was tested and deliberately excluded: +2pp recall cost +1.3pp FPR.)
 """
 
 import argparse
@@ -38,10 +42,18 @@ TREATMENT_RE = re.compile(
     r"|(?P<abg>abrogat\w*)"
     r"|(?P<dis>distinguish\w*)"
     r"|(?P<buts>\bbut see\b)"
-    r"|(?P<dtf>\bdeclined to follow\b)",
+    r"|(?P<dtf>\bdeclined to follow\b)"
+    r"|(?P<disapp>\bdisapprov\w*)"
+    r"|(?P<sup>\bsupersed\w*)"
+    r"|(?P<dep>\bdepart\w* from\b)"
+    r"|(?P<nlg>\bno longer (?:good law|controlling|followed|valid)\b)",
     re.I,
 )
-BIT = {"ovr": 1, "abg": 2, "dis": 4, "buts": 8, "dtf": 16}
+BIT = {
+    "ovr": 1, "abg": 2, "dis": 4, "buts": 8, "dtf": 16,
+    # overruling-family extensions fold into the overruled bit (bit 1):
+    "disapp": 1, "sup": 1, "dep": 1, "nlg": 1,
+}
 
 
 def load_opinions(conn):
@@ -307,14 +319,89 @@ def write_stage(conn, outdir=AUTH_DIR):
     print(json.dumps(summary, indent=2))
 
 
+# ---------------------------------------------------------------- reflag
+
+def reflag_stage(conn, outdir=AUTH_DIR):
+    """Re-scan cites.context with the CURRENT TREATMENT_RE and update only
+    authority.treatment_flags. Used when the scanner improves — avoids
+    recomputing edges/pagerank (CLAUDE.md: measured, not assumed).
+
+    Streaming, resumable by rowid checkpoint like scan_stage.
+    """
+    outdir = Path(outdir)
+    ckpt = outdir / "reflag.progress.json"
+    state = {"last_rowid": 0}
+    if ckpt.exists():
+        state = json.loads(ckpt.read_text())
+        print(f"[reflag] resuming at rowid>{state['last_rowid']:,}")
+
+    flags: dict[int, int] = {}
+    tick = progress_logger("reflag", every=5_000_000)
+    t0 = time.time()
+    cur = conn.execute(
+        "SELECT rowid, cited_id, context FROM cites WHERE rowid > ? AND context IS NOT NULL",
+        (state["last_rowid"],))
+    while True:
+        rows = cur.fetchmany(200_000)
+        if not rows:
+            break
+        max_rowid = state["last_rowid"]
+        for rid, cited, ctx in rows:
+            max_rowid = rid
+            if not ctx:
+                continue
+            b = 0
+            for m in TREATMENT_RE.finditer(ctx):
+                b |= BIT[m.lastgroup]
+            if b:
+                flags[cited] = flags.get(cited, 0) | b
+        state["last_rowid"] = max_rowid
+        ckpt.write_text(json.dumps(state))
+        tick(len(rows))
+
+    print(f"[reflag] scanned cites in {(time.time()-t0)/60:.1f} min; "
+          f"{len(flags):,} flagged opinions")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    batch = []
+    n_upd = 0
+    for oid, b in sorted(flags.items()):
+        batch.append((b, oid))
+        if len(batch) >= 100_000:
+            conn.executemany(
+                "UPDATE authority SET treatment_flags=? WHERE opinion_id=?", batch)
+            n_upd += len(batch)
+            conn.commit()
+            batch.clear()
+    if batch:
+        conn.executemany(
+            "UPDATE authority SET treatment_flags=? WHERE opinion_id=?", batch)
+        n_upd += len(batch)
+        conn.commit()
+
+    n_flag = conn.execute(
+        "SELECT count(*) FROM authority WHERE treatment_flags > 0").fetchone()[0]
+    n_ovr = conn.execute(
+        "SELECT count(*) FROM authority WHERE treatment_flags & 1 = 1").fetchone()[0]
+    summary = {
+        "rows_updated": n_upd,
+        "flagged_total": int(n_flag),
+        "overruled_family_total": int(n_ovr),
+        "minutes": round((time.time() - t0) / 60, 1),
+    }
+    (outdir / "reflag.summary.json").write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("stage", choices=["scan", "pagerank", "write"])
+    ap.add_argument("stage", choices=["scan", "pagerank", "write", "reflag"])
     args = ap.parse_args()
-    conn = db_connect(CORPUS_DB, readonly=(args.stage != "write"))
+    readonly = args.stage in ("scan", "pagerank")
+    conn = db_connect(CORPUS_DB, readonly=readonly)
     try:
         {"scan": scan_stage, "pagerank": pagerank_stage,
-         "write": write_stage}[args.stage](conn)
+         "write": write_stage, "reflag": reflag_stage}[args.stage](conn)
     finally:
         conn.close()
 

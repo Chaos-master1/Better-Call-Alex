@@ -113,8 +113,10 @@ Given generated text:
 - Extract every quoted span → match against the cited opinion's `text`.
   **No match → reject.**
 - Attach treatment from `cites`: cited-by count, plus a negative-language scan of
-  the citing contexts ("overrule", "abrogat", "distinguish", "but see", "declined
-  to follow").
+  the citing contexts ("overrule", "abrogat", "distinguish", "but see",
+  "declined to follow"; extended with the overruling family — "disapprov",
+  "supersed", "depart from", "no longer good law" — measured against the
+  Casetext/LegalBench Overruling split: recall .525 → .774 at FPR ≤ .014).
 - Emit a verification report. The UI renders unverifiable sentences **struck
   through**, never silently dropped — the user must see what failed.
 
@@ -315,11 +317,14 @@ etl/                   Python 3.12 via uv — runs once, never in production
                        scipy.sparse CSR (~132 M edges; NetworkX will not hold)
   statutes.py          eCFR + US Code                              (G4)
   tests/
+verifier/              G2 runtime Python: eyecite subprocess bridge (ADR-001),
+                       fixture generator + golden set, treatment-recall
+                       measurement against the LegalBench overruling split
 app/                   Next.js + TypeScript
   lib/db/  lib/llm/  lib/retrieval/  lib/verify/  lib/agents/  lib/calc/
   app/                 routes
   components/
-evals/                 golden sets + runner
+evals/                 golden sets + runner (retrieval p@10, latency, G2 fixtures)
 data/                  corpus.sqlite, app.sqlite — gitignored
 _archive/              the two prior codebases, untouched, until G3 passes
 ```
