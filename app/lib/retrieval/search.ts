@@ -16,6 +16,7 @@ export interface SearchHit {
   court_id: string | null;
   precedential_status: string | null;
   ocr: boolean;
+  via_parenthetical_recall?: boolean;
   scores: {
     bm25: number;
     authority_multiplier: number;
@@ -50,6 +51,16 @@ const SEARCHABLE_STATUS = ["Published", "Unknown"];
  */
 const POOL_LADDER = [1_000, 20_000];
 const PAREN_POOL = 500;
+/**
+ * §3 step 3 as RECALL, not just re-ranking: a landmark that predates the
+ * query's vocabulary (International Shoe lacks "personal jurisdiction")
+ * can never enter an AND-conjunction pool, no matter how often later
+ * judges describe it in parentheticals. When the query names doctrine
+ * phrases, reserve this many result slots for the most-described
+ * matching opinions so the parenthetical index can rescue them.
+ */
+const PAREN_SEED_SLOTS = 2;
+const PAREN_SEED_SCAN = 100;
 const PASSAGE_LEN = 600;
 /** §9.6: OCR-extracted text is degraded; down-weight it. */
 const OCR_WEIGHT = 0.7;
@@ -61,12 +72,106 @@ const STOPWORDS = new Set([
   "was", "were", "be", "been", "by", "with", "at", "as", "that", "this",
 ]);
 
+/**
+ * Compound legal doctrine terms (lever #1, docs/retrieval.md): matched as
+ * FTS5 phrases instead of loose AND-conjunctions. Slashes the candidate set
+ * for doctrine queries (latency tail) and stops short dense opinions from
+ * crowding landmarks out of the top-10 (precision).
+ */
+const PHRASES = new Set([
+  // constitutional law
+  "first amendment", "second amendment", "fourth amendment", "fifth amendment",
+  "sixth amendment", "fourteenth amendment", "takings clause",
+  "equal protection",
+  "strict scrutiny", "intermediate scrutiny", "rational basis",
+  "procedural due process", "substantive due process",
+  "commerce clause", "dormant commerce clause", "substantial effects",
+  "interstate commerce", "necessary and proper", "supremacy clause",
+  "separation of powers", "executive privilege", "political question",
+  "sovereign immunity", "full faith and credit", "privileges and immunities",
+  "free speech", "free exercise", "establishment clause", "prior restraint",
+  "actual malice", "cruel and unusual punishment", "double jeopardy",
+  "self incrimination", "confrontation clause",
+  "keep and bear arms", "public use",
+  // criminal procedure
+  "probable cause", "reasonable suspicion", "reasonable doubt",
+  "beyond a reasonable doubt", "miranda warnings", "custodial interrogation",
+  "warrantless search", "warrantless seizure",
+  "plain view", "exclusionary rule", "good faith exception",
+  "inevitable discovery", "independent source", "exigent circumstances",
+  "search incident to arrest", "habeas corpus", "plea bargain",
+  "guilty plea", "ineffective assistance of counsel", "excessive force",
+  "false arrest", "false imprisonment", "malicious prosecution",
+  "section 1983",
+  // evidence & procedure
+  "summary judgment", "directed verdict", "class action",
+  "best evidence", "collateral estoppel",
+  "res judicata", "statute of limitations", "statute of frauds",
+  "burden of proof", "preponderance of the evidence",
+  "clear and convincing evidence",
+  "attorney client privilege", "personal jurisdiction",
+  "subject matter jurisdiction", "long arm statute",
+  "forum non conveniens", "choice of law", "minimum contacts",
+  // torts
+  // NOTE: "duty of care" deliberately NOT a phrase — measured 2026-08-24:
+  // its common-word components ("duty","care") make the phrase form 4.4x
+  // slower than loose AND (1,597 ms vs 364 ms rank@20k); loose AND is
+  // precision-equivalent here.
+  "proximate cause",
+  "negligence per se", "res ipsa loquitur", "comparative negligence",
+  "contributory negligence", "contributory fault", "assumption of risk",
+  "products liability", "strict liability", "punitive damages",
+  "compensatory damages", "liquidated damages",
+  "informed consent", "medical malpractice", "wrongful death",
+  "loss of consortium",
+  // contracts & property
+  "breach of contract", "promissory estoppel", "parol evidence rule",
+  "specific performance", "adverse possession", "eminent domain",
+  "just compensation", "regulatory taking", "regulatory takings",
+  "qualified immunity", "official immunity",
+  // employment, admin, commercial
+  "hostile work environment", "disparate impact", "disparate treatment",
+  "at will employment", "chevron deference",
+  "arbitrary and capricious", "substantial evidence", "notice and comment",
+  "rule of reason", "restraint of trade", "public accommodations",
+  "fiduciary duty", "business judgment rule",
+  "piercing the corporate veil", "joint and several liability",
+]);
+/** longest dictionary phrase is four words */
+const MAX_PHRASE_WORDS = 4;
+
+/**
+ * Maximal-munch tokenization: adjacent words forming a dictionary phrase
+ * become one FTS5 phrase token; remaining words are standalone terms.
+ * Phrase detection runs BEFORE stopword removal so entries like
+ * "right to counsel" survive.
+ */
 export function tokenize(query: string): string[] {
-  return query
-    .toLowerCase()
-    .split(/[^a-z0-9']+/)
-    .filter((t) => t.length > 1 && !STOPWORDS.has(t))
-    .slice(0, 24);
+  const words = query.toLowerCase().split(/[^a-z0-9']+/);
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < words.length && tokens.length < 24) {
+    let matchedLen = 0;
+    for (
+      let len = Math.min(MAX_PHRASE_WORDS, words.length - i);
+      len >= 2;
+      len--
+    ) {
+      if (PHRASES.has(words.slice(i, i + len).join(" "))) {
+        matchedLen = len;
+        break;
+      }
+    }
+    if (matchedLen) {
+      tokens.push(words.slice(i, i + matchedLen).join(" "));
+      i += matchedLen;
+    } else {
+      const w = words[i];
+      if (w.length > 1 && !STOPWORDS.has(w)) tokens.push(w);
+      i++;
+    }
+  }
+  return tokens.slice(0, 24);
 }
 
 export function matchExpression(tokens: string[]): string | null {
@@ -279,8 +384,41 @@ export function search(
   }
   if (top.length === 0) return [];
 
+  // Parenthetical-recall seeds (§3 step 3): gated on doctrine queries —
+  // a phrase token present means the query names legal doctrine, which is
+  // exactly where vocabulary drift hides landmarks from conjunctive match.
+  const hasPhrase = tokens.some((t) => t.includes(" "));
+  const seeds: Array<{ row: PoolRow; pb: number; final: number }> = [];
+  if (hasPhrase && boosts.size > 0) {
+    const claimed = new Set(seenClusters);
+    const descIds = [...boosts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .slice(0, PAREN_SEED_SCAN)
+      .map(([id]) => id);
+    const meta = fetchPool(db, descIds);
+    for (const id of descIds) {
+      if (seeds.length >= Math.min(PAREN_SEED_SLOTS, limit)) break;
+      const m = meta.get(id);
+      if (!m) continue;
+      if (m.precedential_status == null ||
+          !SEARCHABLE_STATUS.includes(m.precedential_status)) continue;
+      if (EXCLUDE_BLOCKED && m.blocked) continue;
+      if (courts && (m.court_id == null || !courts.has(m.court_id))) continue;
+      const key = m.cluster_id ?? m.id;
+      if (claimed.has(key)) continue;
+      claimed.add(key);
+      seeds.push({ row: { ...m, bm25: 0 }, pb: boosts.get(id)!, final: 0 });
+    }
+  }
+
+  const merged = [
+    ...top.slice(0, Math.max(0, limit - seeds.length)),
+    ...seeds,
+  ];
+  const seedIds = new Set(seeds.map((s) => s.row.id));
+
   const textStmt = db.prepare("SELECT text FROM opinions WHERE id = ?");
-  return top.map(({ row, final, pb }) => {
+  return merged.map(({ row, final, pb }) => {
     const text = (textStmt.get(row.id) as { text: string } | undefined)?.text ?? "";
     return {
       opinion_id: row.id,
@@ -291,6 +429,7 @@ export function search(
       court_id: row.court_id,
       precedential_status: row.precedential_status,
       ocr: !!row.ocr,
+      ...(seedIds.has(row.id) ? { via_parenthetical_recall: true as const } : {}),
       scores: {
         bm25: row.bm25,
         authority_multiplier: authorityMultiplier(row),

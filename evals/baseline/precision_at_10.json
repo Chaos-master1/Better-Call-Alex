@@ -1,66 +1,66 @@
 {
   "recorded": "2026-08-24",
-  "mean_precision_at_10": 0.27999999999999997,
+  "mean_precision_at_10": 0.2883333333333333,
   "per_case": [
     {
       "id": "doc-01",
       "q": "qualified immunity clearly established",
-      "precision": 0.2,
-      "detail": "Pearson v. Callahan | Anderson v. Creighton | Mitchell v. Forsyth"
+      "precision": 0.3,
+      "detail": "Anderson v. Creighton | Davis v. Scherer | Elder v. Holloway"
     },
     {
       "id": "doc-02",
       "q": "miranda warnings custodial interrogation right to counsel",
-      "precision": 0.6,
-      "detail": "Rhode Island v. Innis | Michigan v. Mosley | Oregon v. Elstad"
+      "precision": 0.2,
+      "detail": "Berkemer v. McCarty | Dickerson v. United States | Missouri v. Seibert"
     },
     {
       "id": "doc-03",
       "q": "fourth amendment warrantless search of automobile probable cause",
-      "precision": 0.1,
-      "detail": "United States v. Ross | Chambers v. Maroney | Coolidge v. New Hampshire"
+      "precision": 0.2,
+      "detail": "United States v. Ross | Chambers v. Maroney | California v. Acevedo"
     },
     {
       "id": "doc-04",
       "q": "plain view doctrine warrantless seizure",
       "precision": 0.2,
-      "detail": "Horton v. California | Texas v. Brown | Minnesota v. Dickerson"
+      "detail": "Horton v. California | Minnesota v. Dickerson | Texas v. Brown"
     },
     {
       "id": "doc-05",
       "q": "dormant commerce clause discrimination against interstate commerce",
       "precision": 0.3,
-      "detail": "General Motors Corp. v. Tracy | Camps Newfound/Owatonna, Inc. v. Town of Harrison | United Haulers Ass'n v. Oneida-Herkimer Solid Waste Management Authority"
+      "detail": "United Haulers Ass'n v. Oneida-Herkimer Solid Waste Management Authority | Camps Newfound/Owatonna, Inc. v. Town of Harrison | General Motors Corp. v. Tracy"
     },
     {
       "id": "doc-06",
       "q": "prior restraint publication national security",
-      "precision": 0,
-      "detail": "Poller v. Columbia Broadcasting System, Inc. | Standard Oil Company of New Jersey, Appts. v. United States | Elrod v. Burns"
+      "precision": 0.1,
+      "detail": "Nebraska Press Assn. v. Stuart | Joseph Burstyn, Inc. v. Wilson | Shuttlesworth v. City of Birmingham"
     },
     {
       "id": "doc-07",
       "q": "equal protection suspect classification racial classification strict scrutiny",
       "precision": 0.4,
-      "detail": "Adarand Constructors, Inc. v. Pena | Johnson v. California | San Antonio Independent School District v. Rodriguez"
+      "detail": "Adarand Constructors, Inc. v. Pena | Johnson v. California | Plyler v. Doe"
     },
     {
       "id": "doc-08",
       "q": "takings just compensation regulatory taking",
-      "precision": 0,
-      "detail": "First English Evangelical Lutheran Church v. County of Los Angeles | Lingle v. Chevron U. S. A. Inc. | Kaiser Aetna v. United States"
+      "precision": 0.1,
+      "detail": "First English Evangelical Lutheran Church v. County of Los Angeles | Lingle v. Chevron U. S. A. Inc. | City of Monterey v. Del Monte Dunes at Monterey, Ltd."
     },
     {
       "id": "doc-09",
       "q": "personal jurisdiction minimum contacts due process",
-      "precision": 0,
-      "detail": "Walden v. Fiore | Metropolitan Life Insurance Company v. Robertson-Ceco Corp., United Dominion Industries, Inc. | Omi Holdings, Inc. v. Royal Insurance Company Of Canada"
+      "precision": 0.1,
+      "detail": "Metropolitan Life Insurance Company v. Robertson-Ceco Corp., United Dominion Industries, Inc. | Insurance Corp. of Ireland v. Compagnie Des Bauxites De Guinee | Omi Holdings, Inc. v. Royal Insurance Company Of Canada"
     },
     {
       "id": "doc-10",
       "q": "procedural due process property interest evidentiary hearing welfare",
       "precision": 0.2,
-      "detail": "Mathews v. Eldridge | Goldberg v. Kelly | Santosky v. Kramer"
+      "detail": "Goldberg v. Kelly | Mathews v. Eldridge | Santosky v. Kramer"
     },
     {
       "id": "cite-01",
@@ -120,7 +120,7 @@
       "id": "fact-07",
       "q": "corporation independent expenditures political campaign first amendment",
       "precision": 0.2,
-      "detail": "Buckley v. Valeo | Cort v. Ash | Citizens United v. Federal Election Commission"
+      "detail": "Buckley v. Valeo | Citizens United v. Federal Election Commission | McIntyre v. Ohio Elections Commission"
     },
     {
       "id": "jur-01",
@@ -149,8 +149,8 @@
     {
       "id": "jur-05",
       "q": "comparative negligence contributory fault recovery plaintiff",
-      "precision": 0.1,
-      "detail": "Nga Li v. Yellow Cab Co. | American Motorcycle Assn. v. Superior Court | Knight v. Jewett"
+      "precision": 0.25,
+      "detail": "Nga Li v. Yellow Cab Co. | Daly v. General Motors Corp. | Horn v. General Motors Corp."
     },
     {
       "id": "doc-11",

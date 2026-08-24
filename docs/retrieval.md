@@ -7,9 +7,25 @@ Quality gate: `pnpm eval` (golden set, precision@10). Latency gate:
 
 ## Query flow
 
-1. **Tokenize** — lowercase, split non-alphanumerics, drop stopwords and
-   single chars, cap 24 tokens. Each token double-quoted into an FTS5 MATCH
-   expression (implicit AND; porter stemmer applies on both sides).
+1. **Tokenize (phrase-aware)** — lowercase, split non-alphanumerics.
+   Maximal-munch: adjacent words forming a compound term of art from a
+   static dictionary (~140 entries) become ONE quoted FTS5 phrase token
+   (`"qualified immunity"`); remaining words are standalone tokens.
+   Implicit AND across tokens; porter stemmer applies to phrases too.
+   Phrase detection runs before stopword removal, so stopword-bearing
+   entries remain expressible. Cap 24 tokens.
+
+   Dictionary membership is evidence-gated, both directions:
+   - *In*: fixed legal collocations only ("minimum contacts", "prior
+     restraint", "plain view"). Flexible concepts that merely contain
+     common words ("due process", "right to counsel", "testimonial
+     hearsay") are excluded — first implementation included them and the
+     golden gate caught a regression (0.280 → 0.245): hard phrase-AND
+     over-constrained multi-doctrine queries and displaced canonical
+     authority with other genuine progeny.
+   - *Cost-checked*: "duty of care" was measured at 4.4× the rank cost of
+     its loose-token form (1,597 ms vs 364 ms @ pool 20k) because FTS5
+     must decode positional lists for common-word components. Excluded.
 2. **Two-phase rank** (mandatory — docs/g0-audit.md measured the naive
    join-ranked pattern at 6.6–20.6 s):
    `SELECT rowid, bm25(opinions_fts) … ORDER BY bm25 LIMIT pool`, then a
@@ -29,6 +45,16 @@ Quality gate: `pnpm eval` (golden set, precision@10). Latency gate:
 5. **Parenthetical agreement** (§3 step 3): top-500 ranked hits over
    `parentheticals_fts` joined back by rowid to `parentheticals.described_id`;
    each hit gains multiplier `1 + 0.25·ln(1+hits)`.
+5b. **Parenthetical recall seeding** — §3 step 3 used as RECALL, not just
+   re-ranking. A landmark that predates the query's vocabulary
+   (*International Shoe*, 1945, contains "minimum contacts" but not the
+   then-nonexistent phrase "personal jurisdiction") can never enter an
+   AND-conjunction pool, however often later judges describe it. When the
+   tokenized query contains ≥1 dictionary phrase (i.e., names doctrine),
+   up to 2 result slots are reserved for the most-described matching
+   opinions from `parenBoosts`, after status/blocked/jurisdiction filters
+   and cluster-dedupe against organic hits; flagged
+   `via_parenthetical_recall`. Organic results always keep priority.
 6. **Authority re-score** (§3 step 4), monotone and defined even while
    `authority` is empty:
    `m = 1 + 0.5·ln(1+pagerank·1e6) + 0.3·ln(1+recent_cites_2y) + [court=scotus]`
@@ -47,31 +73,33 @@ Same DB + query ⇒ same results: no randomness, stable tiebreak on
 `opinion_id ASC`. Recency anchored at snapshot date − 2y in the builder, not
 wall-clock.
 
-## Measured costs (2026-08-24, corpus.sqlite 197 GiB)
+## Measured costs (2026-08-24, corpus.sqlite 197 GiB, post lever #1)
 
 | phase | warm |
 |---|---|
-| opinions_fts rank, 4-term query, pool 1,000 | ~330–520 ms |
-| parentheticals_fts rank, top-500 | 21–44 ms |
+| opinions_fts rank, 4-term query, pool 1,000 | ~260–490 ms |
+| parentheticals_fts rank, top-500 | 9–44 ms |
 | metadata join (1,000 ids) | 4–8 ms |
 | passages (10 texts) | <5 ms |
 
 **Latency gate status: CONDITIONAL.** Budget is warm p95 < 500 ms (§8 G1).
-Measured under normal desktop load (browser/IDE holding most of 23 GB RAM,
-swap full): warm **p50 ≈ 420–440 ms PASS**, warm **p95 ≈ 525–560 ms FAIL**,
-entirely from two 4-term doctrine queries whose AND match sets are in the
-hundreds of thousands of documents. Uncontended runs during the g0 audit
-measured the same pattern at 257–442 ms, which passes. Rank cost scales with
-match-set size, not LIMIT (verified: LIMIT 200 vs 50,000 identical within
-noise; `ORDER BY rank` native path slower than explicit bm25; temp_store=
-MEMORY *worse* under memory pressure).
+Post-lever-#1 bench under the same desktop load as the pre-lever run
+(browser/IDE holding most of 23 GB RAM, swap full): warm **p50 = 463 ms**,
+warm **p95 = 634 ms** — the tail is now a single query ("personal
+jurisdiction minimum contacts due process", ~630 ms) whose AND match set is
+intrinsically large; its worst sibling was root-caused and eliminated
+("negligence duty of care foreseeability": 1,597 → 372 ms by un-phrase-ing
+"duty of care"). Rank cost scales with match-set size, not LIMIT.
 
-Named levers to close the tail, in order of preference (each requires an eval
-run proving precision@10 does not regress):
-1. phrase-aware query analysis (`"qualified immunity"` as a phrase slashes
-   the candidate set for compound legal terms),
+Named levers to close the remaining tail, in order of preference (each
+requires an eval run proving precision@10 does not regress):
+1. ~~phrase-aware query analysis~~ — **DONE 2026-08-24**: mean precision@10
+   0.2800 → **0.2883** (+0.0083, recorded as new baseline generation);
+   fixed doc-06/doc-08/doc-09 zeros via phrases + parenthetical recall
+   seeding; latency outlier eliminated. Residual: one query at ~630 ms.
 2. document-frequency-based down-weighting of near-universal terms,
-3. hardware headroom / dedicated-machine re-measurement.
+3. hardware headroom / dedicated-machine re-measurement — uncontended runs
+   during the g0 audit measured the same pattern at 257–442 ms, which passes.
 
 The gate is not declared met until a bench run on an unloaded machine passes;
 `pnpm bench` exits nonzero until then by design.
