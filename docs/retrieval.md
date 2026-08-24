@@ -49,11 +49,36 @@ wall-clock.
 
 | phase | warm |
 |---|---|
-| opinions_fts rank, 4-term query, top-200 | ~280–580 ms |
+| opinions_fts rank, 4-term query, pool 1,000 | ~330–520 ms |
 | parentheticals_fts rank, top-500 | 21–44 ms |
-| metadata join (200–800 ids) | 1–3 ms |
+| metadata join (1,000 ids) | 4–8 ms |
 | passages (10 texts) | <5 ms |
 
-The FTS rank dominates and scales with match-set size, not LIMIT. Cold-start
-(first process after boot) pays page-cache misses; `mmap_size = 2 GB` keeps
-hot index regions mapped across invocations.
+**Latency gate status: CONDITIONAL.** Budget is warm p95 < 500 ms (§8 G1).
+Measured under normal desktop load (browser/IDE holding most of 23 GB RAM,
+swap full): warm **p50 ≈ 420–440 ms PASS**, warm **p95 ≈ 525–560 ms FAIL**,
+entirely from two 4-term doctrine queries whose AND match sets are in the
+hundreds of thousands of documents. Uncontended runs during the g0 audit
+measured the same pattern at 257–442 ms, which passes. Rank cost scales with
+match-set size, not LIMIT (verified: LIMIT 200 vs 50,000 identical within
+noise; `ORDER BY rank` native path slower than explicit bm25; temp_store=
+MEMORY *worse* under memory pressure).
+
+Named levers to close the tail, in order of preference (each requires an eval
+run proving precision@10 does not regress):
+1. phrase-aware query analysis (`"qualified immunity"` as a phrase slashes
+   the candidate set for compound legal terms),
+2. document-frequency-based down-weighting of near-universal terms,
+3. hardware headroom / dedicated-machine re-measurement.
+
+The gate is not declared met until a bench run on an unloaded machine passes;
+`pnpm bench` exits nonzero until then by design.
+
+## Golden-set methodology
+
+Truth is case-line based: for each doctrine query the expected list contains
+every canonical case line a lawyer would accept as relevant (e.g., the Miranda
+progeny for a Miranda-doctrine query), matched as substrings of `case_name`.
+precision@10 = credited hits ÷ 10 distinct cases returned. The baseline is
+recorded once per scoring-generation change; the runner fails any later change
+beyond −0.02 mean.

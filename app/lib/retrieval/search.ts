@@ -42,7 +42,13 @@ const EXCLUDE_BLOCKED = 1;
  */
 const SEARCHABLE_STATUS = ["Published", "Unknown"];
 
-const POOL_LADDER = [200, 2_000, 20_000];
+/**
+ * Rung 1 is deliberately large: FTS5 ranking cost is LIMIT-independent
+ * (measured — ORDER BY over the match set dominates), so widening the pool
+ * is nearly free and lets the authority multiplier rescue landmarks that sit
+ * at bm25 rank #200–#5,000 behind shorter, denser opinions.
+ */
+const POOL_LADDER = [1_000, 20_000];
 const PAREN_POOL = 500;
 const PASSAGE_LEN = 600;
 /** §9.6: OCR-extracted text is degraded; down-weight it. */

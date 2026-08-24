@@ -1,0 +1,133 @@
+[scan] opinions=10,798,347
+[scan] 2,297,860 rows (76,595/s)
+[scan] 4,970,743 rows (82,846/s)
+[scan] 7,884,799 rows (87,609/s)
+[scan] 12,587,757 rows (104,898/s)
+[scan] 18,202,336 rows (121,349/s)
+[scan] 20,905,112 rows (116,139/s)
+[scan] 24,119,255 rows (114,854/s)
+[scan] 26,868,913 rows (111,954/s)
+[scan] 32,944,667 rows (122,017/s)
+[scan] 37,545,947 rows (125,153/s)
+[scan] 42,400,001 rows (128,368/s)
+[scan] 45,443,481 rows (126,127/s)
+[scan] 47,625,673 rows (122,023/s)
+[scan] 49,935,230 rows (118,809/s)
+[scan] 52,232,462 rows (115,995/s)
+[scan] 56,772,096 rows (118,201/s)
+[scan] 59,356,726 rows (116,317/s)
+[scan] 61,767,773 rows (114,321/s)
+[scan] 65,026,583 rows (114,022/s)
+[scan] 67,760,108 rows (112,877/s)
+[scan] 70,209,764 rows (111,391/s)
+[scan] 74,360,717 rows (112,617/s)
+[scan] 77,856,312 rows (112,786/s)
+[scan] 79,200,001 rows (109,899/s)
+[scan] 80,527,172 rows (107,275/s)
+[scan] 81,764,379 rows (104,738/s)
+[scan] 82,962,496 rows (102,340/s)
+[scan] 84,130,349 rows (100,077/s)
+[scan] 85,389,077 rows (98,074/s)
+[scan] 86,591,515 rows (96,142/s)
+[scan] 87,642,516 rows (94,173/s)
+[scan] 88,741,906 rows (92,376/s)
+[scan] 90,031,268 rows (90,880/s)
+[scan] 91,265,243 rows (89,418/s)
+[scan] 92,600,001 rows (88,098/s)
+[scan] 93,040,430 rows (73,238/s)
+[scan] 93,653,340 rows (72,020/s)
+[scan] 94,753,677 rows (71,223/s)
+[scan] 95,996,789 rows (70,566/s)
+[scan] 97,254,634 rows (69,948/s)
+[scan] 98,478,525 rows (69,332/s)
+[scan] 99,805,416 rows (68,813/s)
+[scan] 101,165,213 rows (68,337/s)
+[scan] 102,395,444 rows (67,794/s)
+[scan] 103,698,126 rows (67,320/s)
+[scan] 105,000,001 rows (66,855/s)
+[scan] DONE 21 parts, 105,689,491 rows, 508,039 flagged, 26.5 min
+[pagerank] nodes=10,798,347 dedup_edges=105,589,361
+[pagerank] iter 1: l1_delta=7.686e-01
+[pagerank] iter 2: l1_delta=3.288e-01
+[pagerank] iter 3: l1_delta=1.564e-01
+[pagerank] iter 4: l1_delta=8.262e-02
+[pagerank] iter 5: l1_delta=4.763e-02
+[pagerank] iter 6: l1_delta=2.799e-02
+[pagerank] iter 7: l1_delta=1.655e-02
+[pagerank] iter 8: l1_delta=9.835e-03
+[pagerank] iter 9: l1_delta=5.863e-03
+[pagerank] iter 10: l1_delta=3.503e-03
+[pagerank] iter 11: l1_delta=2.095e-03
+[pagerank] iter 12: l1_delta=1.249e-03
+[pagerank] iter 13: l1_delta=7.379e-04
+[pagerank] iter 14: l1_delta=4.393e-04
+[pagerank] iter 15: l1_delta=2.686e-04
+[pagerank] iter 16: l1_delta=1.663e-04
+[pagerank] iter 17: l1_delta=1.045e-04
+[pagerank] iter 18: l1_delta=6.684e-05
+[pagerank] iter 19: l1_delta=4.399e-05
+[pagerank] iter 20: l1_delta=3.011e-05
+[pagerank] iter 21: l1_delta=2.183e-05
+[pagerank] iter 22: l1_delta=1.634e-05
+[pagerank] iter 23: l1_delta=1.285e-05
+[pagerank] iter 24: l1_delta=1.039e-05
+[pagerank] iter 25: l1_delta=8.607e-06
+{
+  "nodes": 10798347,
+  "dedup_edges": 105589361,
+  "iters": 25,
+  "mass": 0.9999971424389269,
+  "top5": [
+    {
+      "id": 9423399,
+      "pr": 0.00102058
+    },
+    {
+      "id": 107423,
+      "pr": 0.00047615
+    },
+    {
+      "id": 9429592,
+      "pr": 0.00044844
+    },
+    {
+      "id": 85272,
+      "pr": 0.00040573
+    },
+    {
+      "id": 84978,
+      "pr": 0.00036768
+    }
+  ],
+  "minutes": 15.6
+}
+{
+  "rows": 10798347,
+  "pagerank_positive": 10798347,
+  "recent_positive": 793226,
+  "flagged": 508039,
+  "top5_by_pagerank": [
+    [
+      "Anders v. California",
+      0.00102058
+    ],
+    [
+      "Anders v. California",
+      0.00047615
+    ],
+    [
+      "Strickland v. Washington",
+      0.00044844
+    ],
+    [
+      "M'culloch v. State of Maryland",
+      0.00040573
+    ],
+    [
+      "Schooner Exchange v. McFaddon",
+      0.00036768
+    ]
+  ],
+  "minutes": 28.7
+}
+=== AUTHORITY REMAINING STAGES DONE ===

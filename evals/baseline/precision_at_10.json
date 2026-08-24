@@ -1,66 +1,66 @@
 {
   "recorded": "2026-08-24",
-  "mean_precision_at_10": 0.2833333333333333,
+  "mean_precision_at_10": 0.27999999999999997,
   "per_case": [
     {
       "id": "doc-01",
       "q": "qualified immunity clearly established",
-      "precision": 0.3,
-      "detail": "Anderson v. Creighton | Elder v. Holloway | SAUCIER v. KATZ Et Al."
+      "precision": 0.2,
+      "detail": "Pearson v. Callahan | Anderson v. Creighton | Mitchell v. Forsyth"
     },
     {
       "id": "doc-02",
       "q": "miranda warnings custodial interrogation right to counsel",
-      "precision": 0,
-      "detail": "Michigan v. Mosley | Michigan v. Mosley | Oregon v. Mathiason"
+      "precision": 0.6,
+      "detail": "Rhode Island v. Innis | Michigan v. Mosley | Oregon v. Elstad"
     },
     {
       "id": "doc-03",
       "q": "fourth amendment warrantless search of automobile probable cause",
-      "precision": 0.2,
-      "detail": "United States v. Ross | California v. Acevedo | United States v. Ross"
+      "precision": 0.1,
+      "detail": "United States v. Ross | Chambers v. Maroney | Coolidge v. New Hampshire"
     },
     {
       "id": "doc-04",
       "q": "plain view doctrine warrantless seizure",
-      "precision": 0.3,
-      "detail": "Horton v. California | Texas v. Brown | Arizona v. Hicks"
+      "precision": 0.2,
+      "detail": "Horton v. California | Texas v. Brown | Minnesota v. Dickerson"
     },
     {
       "id": "doc-05",
       "q": "dormant commerce clause discrimination against interstate commerce",
-      "precision": 0,
-      "detail": "United Haulers Ass'n v. Oneida-Herkimer Solid Waste Management Authority | Camps Newfound/Owatonna, Inc. v. Town of Harrison | United Haulers Ass'n v. Oneida-Herkimer Solid Waste Management Authority"
+      "precision": 0.3,
+      "detail": "General Motors Corp. v. Tracy | Camps Newfound/Owatonna, Inc. v. Town of Harrison | United Haulers Ass'n v. Oneida-Herkimer Solid Waste Management Authority"
     },
     {
       "id": "doc-06",
       "q": "prior restraint publication national security",
-      "precision": 0.4,
-      "detail": "New York Times Co. v. United States | New York Times Co. v. United States | New York Times Co. v. United States"
+      "precision": 0,
+      "detail": "Poller v. Columbia Broadcasting System, Inc. | Standard Oil Company of New Jersey, Appts. v. United States | Elrod v. Burns"
     },
     {
       "id": "doc-07",
       "q": "equal protection suspect classification racial classification strict scrutiny",
-      "precision": 0,
-      "detail": "Adarand Constructors, Inc. v. Pena | Johnson v. California | Fisher v. University of Texas at Austin"
+      "precision": 0.4,
+      "detail": "Adarand Constructors, Inc. v. Pena | Johnson v. California | San Antonio Independent School District v. Rodriguez"
     },
     {
       "id": "doc-08",
       "q": "takings just compensation regulatory taking",
       "precision": 0,
-      "detail": "First English Evangelical Lutheran Church v. County of Los Angeles | Lingle v. Chevron U. S. A. Inc. | Palazzolo v. Rhode Island"
+      "detail": "First English Evangelical Lutheran Church v. County of Los Angeles | Lingle v. Chevron U. S. A. Inc. | Kaiser Aetna v. United States"
     },
     {
       "id": "doc-09",
       "q": "personal jurisdiction minimum contacts due process",
       "precision": 0,
-      "detail": "Metropolitan Life Insurance Company v. Robertson-Ceco Corp., United Dominion Industries, Inc. | Omi Holdings, Inc. v. Royal Insurance Company Of Canada | Devas Multimedia Private Ltd. v. Antrix Corp. Ltd."
+      "detail": "Walden v. Fiore | Metropolitan Life Insurance Company v. Robertson-Ceco Corp., United Dominion Industries, Inc. | Omi Holdings, Inc. v. Royal Insurance Company Of Canada"
     },
     {
       "id": "doc-10",
       "q": "procedural due process property interest evidentiary hearing welfare",
-      "precision": 0.5,
-      "detail": "Arnett v. Kennedy | Goldberg v. Kelly | Goldberg v. Kelly"
+      "precision": 0.2,
+      "detail": "Mathews v. Eldridge | Goldberg v. Kelly | Santosky v. Kramer"
     },
     {
       "id": "cite-01",
@@ -83,104 +83,104 @@
     {
       "id": "fact-01",
       "q": "motel refuses lodging Black guests public accommodations interstate commerce",
-      "precision": 0.3,
-      "detail": "Heart of Atlanta Motel, Inc. v. United States | Heart of Atlanta Motel, Inc. v. United States | Heart of Atlanta Motel, Inc. v. United States"
+      "precision": 0.1,
+      "detail": "Heart of Atlanta Motel, Inc. v. United States | United States v. Morrison | Los Angeles v. Patel"
     },
     {
       "id": "fact-02",
       "q": "students suspended for wearing black armbands protesting war at school",
-      "precision": 0.2,
-      "detail": "Tinker v. Des Moines Independent Community School District | Tinker v. Des Moines Independent Community School District | New Rider Et Al. v. Board of Education of Independent School District No. 1, Pawnee County, Oklahoma, Et Al."
+      "precision": 0.1,
+      "detail": "Tinker v. Des Moines Independent Community School District | Morse v. Frederick | Spence v. Washington"
     },
     {
       "id": "fact-03",
       "q": "indigent defendant denied appointed counsel at trial felony",
-      "precision": 0,
-      "detail": "Argersinger v. Hamlin | Douglas v. California | Argersinger v. Hamlin"
+      "precision": 0.2,
+      "detail": "Anders v. California | Douglas v. California | Argersinger v. Hamlin"
     },
     {
       "id": "fact-04",
       "q": "police wiretap listening device telephone booth reasonable expectation of privacy",
       "precision": 0.1,
-      "detail": "Katz v. United States | United States v. Jones | United States v. White"
+      "detail": "Katz v. United States | United States v. White | United States v. Knotts"
     },
     {
       "id": "fact-05",
       "q": "officer stops pedestrian frisks him for concealed weapon suspicious behavior",
-      "precision": 0,
-      "detail": "Kolender v. Lawson | Illinois v. Caballes | United States v. Holmes Jr., Wendell"
+      "precision": 0.2,
+      "detail": "People v. De Bour | United States v. Mendenhall | Kolender v. Lawson"
     },
     {
       "id": "fact-06",
       "q": "obscene film community standards prurient interest serious artistic value",
-      "precision": 0.2,
-      "detail": "New York v. P. J. Video, Inc. | Jenkins v. Georgia | New York v. P. J. Video, Inc."
+      "precision": 0.1,
+      "detail": "Miller v. California | Hamling v. United States | Brockett v. Spokane Arcades, Inc."
     },
     {
       "id": "fact-07",
       "q": "corporation independent expenditures political campaign first amendment",
-      "precision": 0,
-      "detail": "Austin v. Michigan State Chamber of Commerce | Federal Election Commission v. National Conservative Political Action Committee | Federal Election Commission v. National Conservative Political Action Committee"
+      "precision": 0.2,
+      "detail": "Buckley v. Valeo | Cort v. Ash | Citizens United v. Federal Election Commission"
     },
     {
       "id": "jur-01",
       "q": "psychotherapist duty to warn identifiable potential victim",
-      "precision": 0.3,
-      "detail": "People v. Wharton | Hedlund v. Superior Court | People v. Wharton"
+      "precision": 0.1,
+      "detail": "Tarasoff v. Regents of University of California | People v. Wharton | The Regents of the University of California v. Superior Court"
     },
     {
       "id": "jur-02",
       "q": "landowner ordinary care negligence injury on property",
-      "precision": 0,
-      "detail": "Klein v. United States | Klein v. United States | Klein v. United States"
+      "precision": 0.2,
+      "detail": "Rowland v. Christian | Kesner v. Superior Court of Alameda County | Wiener v. Southcoast Childcare Centers, Inc."
     },
     {
       "id": "jur-03",
       "q": "strict liability defective product design manufacturer",
       "precision": 0,
-      "detail": "Anderson v. Owens-Corning Fiberglas Corp. | Carlin v. Superior Court | Anderson v. Owens-Corning Fiberglas Corp."
+      "detail": "Barker v. Lull Engineering Co. | Anderson v. Owens-Corning Fiberglas Corp. | Cronin v. J.B.E. Olson Corp."
     },
     {
       "id": "jur-04",
       "q": "bystander emotional distress foreseeability negligence duty",
-      "precision": 0,
-      "detail": "Thing v. La Chusa | Thing v. La Chusa | Burgess v. Superior Court"
+      "precision": 0.2,
+      "detail": "Burgess v. Superior Court | Thing v. La Chusa | Christensen v. Superior Court"
     },
     {
       "id": "jur-05",
       "q": "comparative negligence contributory fault recovery plaintiff",
-      "precision": 0.2,
-      "detail": "Horn v. General Motors Corp. | Daly v. General Motors Corp. | Daly v. General Motors Corp."
+      "precision": 0.1,
+      "detail": "Nga Li v. Yellow Cab Co. | American Motorcycle Assn. v. Superior Court | Knight v. Jewett"
     },
     {
       "id": "doc-11",
       "q": "confrontation clause testimonial hearsay cross-examination",
       "precision": 0.1,
-      "detail": "California v. Green | Crawford v. Washington | California v. Green"
+      "detail": "Crawford v. Washington | California v. Green | Ohio v. Roberts"
     },
     {
       "id": "doc-12",
       "q": "commerce clause substantial effect economic activity",
-      "precision": 0.7,
-      "detail": "Gonzales v. Raich | Gonzales v. Raich | United States v. Lopez"
+      "precision": 0.3,
+      "detail": "United States v. Morrison | United States v. Lopez | Wickard v. Filburn"
     },
     {
       "id": "doc-13",
       "q": "second amendment individual right keep and bear arms handgun home",
-      "precision": 0.7,
-      "detail": "District of Columbia v. Heller | District of Columbia v. Heller | McDonald v. City of Chicago"
+      "precision": 0.2,
+      "detail": "District of Columbia v. Heller | New York State Rifle & Pistol Assn., Inc. v. Bruen | McDonald v. City of Chicago"
     },
     {
       "id": "doc-14",
       "q": "attorney work product privilege discovery adversarial preparation",
-      "precision": 0,
-      "detail": "United States v. Nobles | United States v. Nobles | In Re Standard Financial Management Corp."
+      "precision": 0.2,
+      "detail": "Hickman v. Taylor | Upjohn Co. v. United States | United States v. Nobles"
     },
     {
       "id": "smoke-01",
       "q": "contract",
       "precision": 1,
-      "detail": "Interbank Investments, LLC v. Eagle River Water & Sanitation District | Home Base Litter Control, LLC v. Claiborne County, Mississippi | Winter v. Cath-dr/Balti Joint Venture"
+      "detail": "Interbank Investments, LLC v. Eagle River Water & Sanitation District | Becerra v. San Carlos Apache Tribe | Becerra v. San Carlos Apache Tribe"
     }
   ]
 }
