@@ -179,7 +179,19 @@ def main():
     add(None, "pin_annotated",
         f'Miranda v. Arizona, {mir["vol"]} U.S. {mir["page"]}, 164 (1966), '
         f'holds: "{q_mir}"',
-        False, ["pin_unverified"])
+        False, ['"pin_unverified":true'])
+
+    # block quote: same words, hard-wrapped with newlines inside the quoted
+    # span — exercises newline-tolerant extraction + whitespace-collapsing
+    # match rung end to end.
+    q_katz_blk = pick_sentence(katz["text"], used_sentences)
+    words = q_katz_blk.split()
+    wrapped = "\n".join(
+        " ".join(words[i:i + 6]) for i in range(0, len(words), 6))
+    add(None, "block_quote",
+        f'The Court explained in Katz v. United States, '
+        f'{katz["vol"]} U.S. {katz["page"]} (1967): \n"\n{wrapped}\n"',
+        False, [])
 
     add(None, "unsupported_short_form",
         f'See also Katz v. United States, 389 U.S., at 351 (discussing privacy).',

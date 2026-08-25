@@ -15,11 +15,18 @@
       "text": "Miranda v. Arizona, 384 U.S. 436, 164 (1966), holds: \"The use of physical brutality and violence is not, unfortunately, relegated to the past or to any part of the country.\"",
       "expect_overall": "pass",
       "expect_contains": [
-        "pin_unverified"
+        "\"pin_unverified\":true"
       ]
     },
     {
-      "id": "unsupported_short_form-03",
+      "id": "block_quote-03",
+      "category": "block_quote",
+      "text": "The Court explained in Katz v. United States, 389 U.S. 347 (1967): \n\"\nWhat a person knowingly exposes to\nthe public, even in his own\nhome or office, is not a\nsubject of Fourth Amendment protection.\n\"",
+      "expect_overall": "pass",
+      "expect_contains": []
+    },
+    {
+      "id": "unsupported_short_form-04",
       "category": "unsupported_short_form",
       "text": "See also Katz v. United States, 389 U.S., at 351 (discussing privacy).",
       "expect_overall": "pass",
@@ -28,7 +35,7 @@
       ]
     },
     {
-      "id": "fabricated_citation-04",
+      "id": "fabricated_citation-05",
       "category": "fabricated_citation",
       "text": "As this Court held in Smith v. Jones, 734 F.3d 999 (11th Cir. 2020), the doctrine requires dismissal.",
       "expect_overall": "fail",
@@ -37,7 +44,7 @@
       ]
     },
     {
-      "id": "fabricated_citation-05",
+      "id": "fabricated_citation-06",
       "category": "fabricated_citation",
       "text": "As this Court held in Smith v. Jones, 888 F. Supp. 2d 111 (11th Cir. 2020), the doctrine requires dismissal.",
       "expect_overall": "fail",
@@ -46,7 +53,7 @@
       ]
     },
     {
-      "id": "fabricated_citation-06",
+      "id": "fabricated_citation-07",
       "category": "fabricated_citation",
       "text": "As this Court held in Smith v. Jones, 123 U.S. 456 (11th Cir. 2020), the doctrine requires dismissal.",
       "expect_overall": "fail",
@@ -55,7 +62,7 @@
       ]
     },
     {
-      "id": "invented_quote-07",
+      "id": "invented_quote-08",
       "category": "invented_quote",
       "text": "Roe stands for the proposition that. 410 U.S. 113 establishes: \"The Court announced a rigid trimester framework permitting states to regulate abortion only after fetal viability has been clearly established.\"",
       "expect_overall": "fail",
@@ -64,7 +71,7 @@
       ]
     },
     {
-      "id": "invented_quote-08",
+      "id": "invented_quote-09",
       "category": "invented_quote",
       "text": "Miranda stands for the proposition that. 384 U.S. 436 establishes: \"The Court required officers to recite a scripted warning before any custodial traffic stop regardless of interrogation.\"",
       "expect_overall": "fail",
@@ -73,16 +80,16 @@
       ]
     },
     {
-      "id": "altered_quote-09",
+      "id": "altered_quote-10",
       "category": "altered_quote",
-      "text": "Quoted verbatim from 389 U.S. 347: \"What a person knowingly exposes to the public, even in his own home or quantum is not a subject of Fourth Amendment protection.\"",
+      "text": "Quoted verbatim from 389 U.S. 347: \"But what he sought to exclude when he entered the booth was not the quantum eye \u2014 it was the uninvited ear.\"",
       "expect_overall": "fail",
       "expect_contains": [
         "quote_not_found"
       ]
     },
     {
-      "id": "altered_quote-10",
+      "id": "altered_quote-11",
       "category": "altered_quote",
       "text": "Quoted verbatim from 384 U.S. 436: \"Only recently in Kings County, New York, the police brutally beat, kicked and placed lighted cigarette butts on the back of a quantum witness under interrogation for the purpose of securing a statement incriminating a third party.\"",
       "expect_overall": "fail",
@@ -91,16 +98,16 @@
       ]
     },
     {
-      "id": "wrong_case_quote-11",
+      "id": "wrong_case_quote-12",
       "category": "wrong_case_quote",
-      "text": "Roe v. Wade, 410 U.S. 113 (1973), explained: \"But what he sought to exclude when he entered the booth was not the intruding eye \u2014 it was the uninvited ear.\"",
+      "text": "Roe v. Wade, 410 U.S. 113 (1973), explained: \"One who occupies it, shuts the door behind him, and pays the toll that permits him to place a call is surely entitled to assume that the words he utters into the mouthpiece will not be broadcast to the world.\"",
       "expect_overall": "fail",
       "expect_contains": [
         "quote_wrong_case"
       ]
     },
     {
-      "id": "wrong_case_quote-12",
+      "id": "wrong_case_quote-13",
       "category": "wrong_case_quote",
       "text": "Under Gideon v. Wainwright, 372 U.S. 335 (1963), \"Unless a proper limitation upon custodial interrogation is achieved \u2014 such as these decisions will advance \u2014 -there can be no assurance that practices of this nature will be eradicated in the foreseeable future.\"",
       "expect_overall": "fail",
@@ -109,7 +116,7 @@
       ]
     },
     {
-      "id": "overruled_flagged-13",
+      "id": "overruled_flagged-14",
       "category": "overruled_flagged",
       "text": "Anders v. California (386 U.S. 738) observed: \"This request was denied and petitioner proceeded to file his own brief pro se.\" See 386 U.S. 738.",
       "expect_overall": "pass",

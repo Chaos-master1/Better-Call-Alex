@@ -57,7 +57,7 @@ that. Legitimate elision is supported only via explicit ellipsis marks.
 | invented_quote | 2 | fail | plausible doctrinal sentence, asserted absent from cited text |
 | altered_quote | 2 | fail | one word substituted; absence machine-checked |
 | wrong_case_quote | 2 | fail | real quote attributed to another real case; report names the true source |
-| valid_passage / pin_annotated / unsupported_short_form | 3 | pass | controls incl. annotations |
+| valid_passage / pin_annotated / block_quote / unsupported_short_form | 4 | pass | controls incl. annotations; block quote hard-wraps a verbatim span across newlines |
 | overruled_flagged | 1 | pass | correct cite+quote to a flagged case; flags ride along as INFERRED |
 
 Regenerate with `uv run python verifier/make_fixtures.py` (deterministic;
@@ -101,6 +101,17 @@ Corpus treatment flags rebuilt with the extended scanner via
    signals for triage, never assertions of overruling (§5.5).
 5. Quote attribution is heuristic (nearest-citation adjacency); documents
    quoting two cases inside one sentence pair may mis-attribute.
-6. Bridge spawns a Python process per verification (~1.5 s including
-   imports); batch mode (`{"texts": [...]}`) amortizes this when verifying
-   many drafts.
+6. Bridge spawns a Python process per verification (**0.33 s measured**,
+   dominated by imports); batch mode (`{"texts": [...]}`) amortizes this
+   when verifying many drafts. `verifyText` is synchronous by design for
+   CLI use — a G3 server must wrap it in an async worker, not call it on
+   the request thread.
+
+## Licensing
+
+`verifier/fixtures/overruling_legalbench.tsv`: the Casetext/RegLab
+Overruling Dataset (2,394 attorney-annotated sentences), mirrored by
+LegalBench (`nguha/legalbench`, config `overruling`, test split),
+**CC BY 4.0**. Fixture quotes are corpus text (CourtListener bulk data,
+Public Domain Mark 1.0). Free Law Project–authored parentheticals are CC
+BY-ND and are never quoted in fixtures.

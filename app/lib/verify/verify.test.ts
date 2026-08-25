@@ -86,6 +86,13 @@ test("quoted-span extraction finds straight and curly pairs", () => {
   );
 });
 
+test("block quotes spanning newlines are extracted", () => {
+  const t = 'The Court held:\n"line one of the quote\nline two continues here"\nend.';
+  const spans = extractQuotedSpans(t);
+  assert.equal(spans.length, 1);
+  assert.match(spans[0].quote, /line two continues/);
+});
+
 test("probeFragment picks whole words off the edges", () => {
   const q = Array.from({ length: 40 }, (_, i) => `w${i}`).join(" ");
   const frag = probeFragment(q);

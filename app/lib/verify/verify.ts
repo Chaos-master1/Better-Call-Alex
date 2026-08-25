@@ -46,6 +46,9 @@ export interface CitationCheck {
   reporter: string | null;
   page: string | null;
   form: string;
+  /** char offsets of the citation inside the verified draft text */
+  cite_start: number;
+  cite_end: number;
   status: "verified" | "unresolved_citation" | "unsupported_form";
   pin_unverified: boolean;
   opinion_id?: number;
@@ -115,12 +118,16 @@ function runBridge(text: string): BridgeCitation[] {
   return first.filter((c): c is BridgeCitation => !("error" in c));
 }
 
-/** Straight + curly double-quoted spans of quotable length. */
+/**
+ * Straight + curly double-quoted spans of quotable length. Newlines are
+ * allowed inside spans (block quotes); the lazy bound keeps a stray
+ * opening delimiter from swallowing more than one paragraph-ish chunk.
+ */
 export function extractQuotedSpans(
   text: string
 ): Array<{ quote: string; start: number; end: number }> {
   const out: Array<{ quote: string; start: number; end: number }> = [];
-  const re = /["\u201c]([^"\u201c\u201d\n]{8,2000}?)["\u201d]/g;
+  const re = /["\u201c]([^"\u201c\u201d]{8,2000}?)["\u201d]/gs;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     out.push({
@@ -255,6 +262,8 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
   // ---- citations ---------------------------------------------------------
   const citations: CitationCheck[] = [];
   for (const c of extracted) {
+    // Spans ride ON the check object: bridge error entries are filtered
+    // upstream, so parallel-array indexing here would silently desync.
     if (c.type !== "full") {
       citations.push({
         citation_text: c.text,
@@ -263,6 +272,8 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
         reporter: c.reporter,
         page: c.page,
         form: c.type,
+        cite_start: c.start,
+        cite_end: c.end,
         status: "unsupported_form",
         pin_unverified: c.pin_cite != null,
       });
@@ -282,6 +293,8 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
         reporter: c.reporter,
         page: c.page,
         form: c.type,
+        cite_start: c.start,
+        cite_end: c.end,
         status: "unresolved_citation",
         pin_unverified: c.pin_cite != null,
       });
@@ -303,6 +316,8 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
       reporter: c.reporter,
       page: c.page,
       form: c.type,
+      cite_start: c.start,
+      cite_end: c.end,
       status: "verified",
       pin_unverified: c.pin_cite != null,
       opinion_id: res.opinion_id,
@@ -322,12 +337,10 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
     let idx = -1;
     for (let i = citations.length - 1; i >= 0; i--) {
       const c = citations[i];
-      const citeEnd =
-        extracted[i]?.end ?? 0;
       if (
         c.form === "full" &&
         c.status === "verified" &&
-        citeEnd <= span.start
+        c.cite_end <= span.start
       ) {
         target = c;
         idx = i;
@@ -337,12 +350,11 @@ export function verifyText(db: Database.Database, text: string): VerificationRep
     if (!target) {
       for (let i = 0; i < citations.length; i++) {
         const c = citations[i];
-        const citeStart = extracted[i]?.start ?? Number.MAX_SAFE_INTEGER;
         if (
           c.form === "full" &&
           c.status === "verified" &&
-          citeStart >= span.end &&
-          citeStart - span.end <= 300
+          c.cite_start >= span.end &&
+          c.cite_start - span.end <= 300
         ) {
           target = c;
           idx = i;
