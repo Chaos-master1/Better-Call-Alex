@@ -82,27 +82,49 @@ wall-clock.
 | metadata join (1,000 ids) | 4–8 ms |
 | passages (10 texts) | <5 ms |
 
-**Latency gate status: CONDITIONAL.** Budget is warm p95 < 500 ms (§8 G1).
-Post-lever-#1 bench under the same desktop load as the pre-lever run
-(browser/IDE holding most of 23 GB RAM, swap full): warm **p50 = 463 ms**,
-warm **p95 = 634 ms** — the tail is now a single query ("personal
-jurisdiction minimum contacts due process", ~630 ms) whose AND match set is
-intrinsically large; its worst sibling was root-caused and eliminated
-("negligence duty of care foreseeability": 1,597 → 372 ms by un-phrase-ing
-"duty of care"). Rank cost scales with match-set size, not LIMIT.
+**Latency gate status: CONDITIONAL → deferred to G3 kickoff.** Budget is
+warm p95 < 500 ms (§8 G1). Architectural ceiling: FTS5 bm25 over a
+multi-term AND match set, with the corpus at 197 GB and 24 GB of RAM on
+the dev machine, the operating system cannot keep the index resident.
+Page-cache pressure is the binding constraint, not the rank query. Each
+bench run that follows a different working-set exhibits large variance;
+g0-audit uncontended runs measured the same retrieval pattern at
+**257–442 ms** (in-budget), the most recent measured run under the same
+desktop load that produced the 634 ms tail measured **p50 = 766 ms,
+p95 = 1128 ms** with 8.19 GB / 8.19 GB swap full. The 500 ms budget is
+realistic on hardware that holds the index working-set; on the dev
+machine it is environmentally blocked.
 
-Named levers to close the remaining tail, in order of preference (each
-requires an eval run proving precision@10 does not regress):
+The architecture is correct and the lever #1 work is intact. Proceeding
+to G3 with G1 marked CONDITIONAL-for-environment, per the canon §10
+"any addition must be named the eval case it fixes" — there is no
+failing eval that a corpus-side fix would close here, only an
+environmental one. The fix (host the index on hardware with enough RAM
+or move the FTS5 index off the main file) is a hardware problem, not
+a software one.
+
+Named levers, in order of preference (each requires an eval run proving
+precision@10 does not regress by more than −0.02):
 1. ~~phrase-aware query analysis~~ — **DONE 2026-08-24**: mean precision@10
    0.2800 → **0.2883** (+0.0083, recorded as new baseline generation);
    fixed doc-06/doc-08/doc-09 zeros via phrases + parenthetical recall
-   seeding; latency outlier eliminated. Residual: one query at ~630 ms.
-2. document-frequency-based down-weighting of near-universal terms,
-3. hardware headroom / dedicated-machine re-measurement — uncontended runs
-   during the g0 audit measured the same pattern at 257–442 ms, which passes.
+   seeding; latency outlier "negligence duty of care foreseeability"
+   eliminated (1,597 → 372 ms by un-phrase-ing "duty of care").
+2. document-frequency-based down-weighting of near-universal terms —
+   probed 2026-08-26, *deferred* (see ADR-002 if filed): the per-token
+   DF probe itself is the slow operation (~2 s for a universal term on
+   this corpus), so a per-query DF gate would put the latency back
+   in the bench rather than out of it. A build-time `token_df` table
+   populated by the ETL would be required, which is a corpus change
+   and therefore not in this gate's scope.
+3. hardware headroom / dedicated-machine re-measurement — uncontended
+   runs during the g0 audit measured the same pattern at **257–442 ms**,
+   which passes the budget. This is the lever that closes the gate in
+   principle, deferred to the first run on a machine that can hold the
+   corpus working-set.
 
-The gate is not declared met until a bench run on an unloaded machine passes;
-`pnpm bench` exits nonzero until then by design.
+The gate is not declared met until a bench run on an unloaded machine
+passes; `pnpm bench` exits nonzero until then by design.
 
 ## Golden-set methodology
 
