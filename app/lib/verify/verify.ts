@@ -27,8 +27,9 @@ import {
   type LookupResult,
 } from "../db.js";
 import { findQuote } from "./quotes.js";
+import { resolveRepo } from "../repo.js";
 
-const REPO = path.resolve(import.meta.dirname, "..", "..", "..");
+const REPO = resolveRepo();
 const BRIDGE = path.join(REPO, "verifier", "bridge.py");
 
 export const TREATMENT_LABELS: Array<{ bit: number; label: string }> = [

@@ -7,3 +7,5 @@ node_modules/
 *.sqlite-shm
 *.sqlite-wal
 .shards/
+next/
+app/.next/

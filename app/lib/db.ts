@@ -1,7 +1,8 @@
 import Database from "better-sqlite3";
 import path from "node:path";
+import { resolveRepo } from "./repo.js";
 
-const REPO = path.resolve(import.meta.dirname, "..", "..");
+const REPO = resolveRepo();
 export const CORPUS_PATH = path.join(REPO, "data", "corpus.sqlite");
 export const APP_PATH = path.join(REPO, "data", "app.sqlite");
 

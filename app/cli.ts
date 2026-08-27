@@ -3,6 +3,7 @@ import { openCorpus, resolveCluster, type LookupResult } from "./lib/db.js";
 import { search } from "./lib/retrieval/search.js";
 import { openApp } from "./lib/app_db.js";
 import { runCase } from "./lib/agents/run.js";
+import { parseCitation } from "./lib/citation.js";
 
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
@@ -36,27 +37,13 @@ function renderSentence(s: {
   return `${prefix}${tagStr} ${text}${citeStr}`;
 }
 
-export function parseCitation(
-  input: string
-): { volume: string; reporter: string; page: string } | null {
-  const m = input
-    .trim()
-    .match(/^(\d{1,4})\s+([A-Za-z][A-Za-z0-9 .']*?\.?)\s+(\d{1,6})$/);
-  if (!m) return null;
-  return {
-    volume: String(Number(m[1])),
-    reporter: m[2].trim(),
-    page: String(Number(m[3])),
-  };
-}
-
 export function lookup(db: ReturnType<typeof openCorpus>, input: string): LookupResult | null {
   const cite = parseCitation(input);
   if (!cite) return null;
   return resolveCluster(db, cite.volume, cite.reporter, cite.page);
 }
 
-function main() {
+async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === "lookup") {
     const query = args.join(" ");

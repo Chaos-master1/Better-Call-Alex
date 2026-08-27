@@ -203,11 +203,12 @@ export async function analystAgent(
     intake,
     retrieval: research.hits.map((h) => ({
       case_name: h.case_name,
-      citation: h.citations?.[0] ?? null,
       date_filed: h.date_filed,
       court_id: h.court_id,
-      score: h.scores,
+      precedential_status: h.precedential_status,
+      scores: h.scores,
       treatment_flags: h.treatment_flags,
+      cited_by_recent: h.cited_by_recent,
       passages: h.passages,
     })),
   };

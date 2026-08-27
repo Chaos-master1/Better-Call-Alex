@@ -144,12 +144,12 @@ export async function generate(
   await verifyEnvironment();
   const c = getClient();
   const temperature = opts.temperature ?? 0.0;
-  const options = {
+  const options: Record<string, unknown> = {
     temperature,
     num_ctx: REQUIRED_CTX,
     num_predict: opts.maxTokens ?? 2048,
-  } as Record<string, number>;
-  const stop = opts.stop && opts.stop.length > 0 ? opts.stop : undefined;
+  };
+  if (opts.stop && opts.stop.length > 0) options.stop = opts.stop;
   const t0 = performance.now();
   const res = await c.generate({
     model: activeModel,
@@ -157,8 +157,7 @@ export async function generate(
     system: opts.system,
     stream: false,
     think: false,
-    options,
-    stop,
+    options: options as any,
     format: opts.jsonMode ? "json" : undefined,
   });
   const ms = performance.now() - t0;

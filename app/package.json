@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "alex": "tsx cli.ts",
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
     "eval": "tsx ../evals/run_eval.ts",
     "bench": "tsx ../evals/bench_latency.ts",
     "test": "tsx --test \"lib/**/*.test.ts\" && tsx ../evals/run_g2_fixtures.ts",
@@ -13,11 +16,15 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
+    "@types/react": "19.2.18",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "ollama": "^0.5.10"
+    "next": "^15.5.24",
+    "ollama": "^0.5.10",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
