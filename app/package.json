@@ -17,6 +17,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "ollama": "^0.5.10"
   }
 }
