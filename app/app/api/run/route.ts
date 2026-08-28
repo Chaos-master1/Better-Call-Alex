@@ -18,10 +18,11 @@ export async function POST(req: Request) {
   }
   const app = openApp();
   try {
+    const title = facts.length > 80 ? facts.slice(0, 77) + "..." : facts;
     const caseId = Number(
       app
         .prepare(`INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`)
-        .run(`web-${Date.now()}`, "Web run", facts).lastInsertRowid
+        .run(`web-${Date.now()}`, title, facts).lastInsertRowid
     );
     const out = await runCase(app, caseId, facts);
     return NextResponse.json({

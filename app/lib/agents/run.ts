@@ -26,7 +26,7 @@ import {
 } from "./index.js";
 import { useModel, RESIDENT_MODEL, ANALYST_MODEL } from "../llm.js";
 import {
-  verifyAllTagged,
+  verifyTaggedSentences,
   type RenderedDraft,
   type TaggedSentence,
 } from "../render.js";
@@ -81,7 +81,7 @@ export async function runCase(
       ...analyst.tagged_sentences,
       ...adversary.tagged_sentences,
     ];
-    const draft = verifyAllTagged(corpus, combined);
+    const draft = verifyTaggedSentences(corpus, combined);
     audit(appDb, "verifier.run", {
       caseId,
       overall: draft.overall,
@@ -92,9 +92,9 @@ export async function runCase(
     // 5. swap back to 9b so subsequent runs start on the resident model
     await useModel(RESIDENT_MODEL);
 
-    finalizeRun(appDb, caseId, "succeeded");
+    const runId = finalizeRun(appDb, caseId, "succeeded");
     return {
-      run_id: 0, // populated by finalizeRun's lastInsertRowid
+      run_id: runId,
       case_id: caseId,
       intake,
       research,
@@ -124,16 +124,29 @@ function startRun(appDb: Database.Database, caseId: number): number {
   );
 }
 
+/**
+ * Mark the most recent running row for the case as finished and return
+ * its id. The `ORDER BY id DESC LIMIT 1` makes this safe even if more
+ * than one running row exists for the case (e.g. a previous attempt
+ * that crashed before finalize).
+ */
 function finalizeRun(
   appDb: Database.Database,
   caseId: number,
   status: "succeeded" | "failed" | "cancelled"
-): void {
+): number {
+  const target = appDb
+    .prepare(
+      `SELECT id FROM runs WHERE case_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1`
+    )
+    .get(caseId) as { id: number } | undefined;
+  if (!target) return 0;
   appDb
     .prepare(
-      `UPDATE runs SET status = ?, finished_at = datetime('now') WHERE case_id = ? AND status = 'running'`
+      `UPDATE runs SET status = ?, finished_at = datetime('now') WHERE id = ?`
     )
-    .run(status, caseId);
+    .run(status, target.id);
+  return target.id;
 }
 
 function persistIntake(

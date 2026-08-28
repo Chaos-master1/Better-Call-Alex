@@ -3,8 +3,14 @@
  * messages, runs, audit_log. The corpus is ATTACHed read-only.
  *
  * audit_log is append-only, enforced by triggers that reject UPDATE and
- * DELETE — not by convention (§5.6). Run via: `tsx ../etl/build_app_db.py`
- * or via the migration runner below.
+ * DELETE — not by convention (§5.6).
+ *
+ * The corpus alias is made read-only by issuing `PRAGMA corpus.query_only
+ * = 1` after ATTACH: the better-sqlite3 build used here does not support
+ * the `file:...?mode=ro` URI form in ATTACH strings, but the query_only
+ * pragma on an attached DB has the same effect (rejects writes, creates,
+ * and drops). The corpus handle from `openCorpus()` is the canonical
+ * read-only path; this attachment is for cross-DB joins.
  */
 import Database from "better-sqlite3";
 import path from "node:path";
@@ -87,23 +93,18 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind_ts ON audit_log(kind, ts);
  * If the app DB file does not exist, the schema is created.
  */
 export function openApp(): Database.Database {
-  const fresh = !existsSync(APP_PATH);
   const db = new Database(APP_PATH);
-  if (fresh) {
-    db.exec(SCHEMA);
-  } else {
-    // idempotent: triggers/tables use IF NOT EXISTS
-    db.exec(SCHEMA);
-  }
-  // corpus attached. The build of better-sqlite3 used here does not
-  // support `file:...?mode=ro` in the ATTACH string, so we open the
-  // corpus read-only via its own handle (openCorpus) and rely on the
-  // pragma_query_only + readonly flag on that handle. The cross-DB
-  // joins here are read-only by construction; the corpus is never
-  // written through this connection.
+  // The schema uses IF NOT EXISTS for every table, index, and trigger,
+  // so this is idempotent on a populated DB.
+  db.exec(SCHEMA);
   db.pragma(`journal_mode = WAL`);
   db.pragma(`foreign_keys = ON`);
+  // ATTACH the corpus and immediately make the attached alias read-only.
+  // Without this, a stray `UPDATE corpus.opinions` would silently corrupt
+  // the 197 GB corpus file. Tested: query_only rejects writes, creates,
+  // and drops on the attached DB.
   db.exec(`ATTACH DATABASE '${CORPUS_PATH.replace(/'/g, "''")}' AS corpus`);
+  db.exec(`PRAGMA corpus.query_only = 1`);
   return db;
 }
 

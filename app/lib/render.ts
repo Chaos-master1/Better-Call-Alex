@@ -18,7 +18,6 @@
  * The claim-tag gate (§5.3) is enforced HERE, not by prompt. If the
  * analyst returns a sentence that is not tagged, the gate rejects it.
  */
-import type { SearchHit } from "./retrieval/search.js";
 import { verifyText, type VerificationReport } from "./verify/verify.js";
 import type Database from "better-sqlite3";
 
@@ -124,11 +123,10 @@ export function verifyTaggedSentences(
   return { draft, sentences: bySentence, report, overall };
 }
 
-/** Strip pin-cite parentheticals back out of the draft for clean rendering. */
-export function stripPinCites(draft: string): string {
-  return draft.replace(/\s*\(\d[^)]*\)/g, "");
-}
-
+/**
+ * Build the per-sentence char ranges used to cross-reference the
+ * verifier's report with the agent's tagged sentences.
+ */
 function sentenceCharRanges(
   draft: string,
   sentences: TaggedSentence[]
@@ -144,23 +142,16 @@ function sentenceCharRanges(
     }
     const after = idx + tag.length + 1; // skip the space after the tag
     const cite = s.pin_cite ? ` (${s.pin_cite})` : "";
-    const segLen = s.text.length + cite.length;
+    // The char range covers the text AND the parenthetical pin cite, so
+    // citations placed inside the parenthetical (e.g. "410 U.S. 113")
+    // still get cross-referenced to this sentence. Without the cite in
+    // the range, an unresolved citation in the parenthetical would not
+    // mark the sentence as unverified, and a verified-by-text citation
+    // would not be associated with the sentence.
     const a = after;
-    const b = a + s.text.length; // [a, b) = the text only, not the cite
+    const b = a + s.text.length + cite.length;
     out.push([a, b]);
-    cursor = idx + tag.length + 1 + segLen + 1; // +1 = the space between
+    cursor = idx + tag.length + 1 + s.text.length + cite.length + 1; // +1 = space between
   }
   return out;
-}
-
-/**
- * Convenience: every sentence in the analyst + adversary drafts goes
- * through the same gate. The caller passes the union of tagged
- * sentences; this returns one RenderedDraft covering both.
- */
-export function verifyAllTagged(
-  db: Database.Database,
-  sentences: TaggedSentence[]
-): RenderedDraft {
-  return verifyTaggedSentences(db, sentences);
 }

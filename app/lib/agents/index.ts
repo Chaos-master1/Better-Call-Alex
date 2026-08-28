@@ -14,7 +14,7 @@
  * unaware of model identity — `app/lib/llm.ts` owns the swap.
  */
 
-import { generate, chat, currentModel } from "../llm.js";
+import { generate } from "../llm.js";
 import type Database from "better-sqlite3";
 import { search, type SearchHit } from "../retrieval/search.js";
 
@@ -169,10 +169,26 @@ of:
   [INFERRED] — your reasoning or analogical extension. Marked "inferred"
                so the user sees the boundary.
 
+Pin cite convention (CLAUDE.md §5.1): a pin cite is the volume + reporter
++ page, e.g. "410 U.S. 113" or "915 F.2d 1234, 1235". The form is the
+one the reporter uses, e.g. "456 U.S. 798, 800" (volume U.S. page).
+
+You MUST put every pin cite in BOTH places:
+  1. inline at the end of the [LAW] sentence, in parentheses, e.g.
+     "...the Court held that a warrant is required (410 U.S. 113, 117)."
+  2. in the "pin_cite" field of the tagged_sentence object, with the
+     SAME volume-reporter-page string.
+
+Both must match. The render layer uses the field to associate citations
+with the sentence; the inline parenthetical is what the verifier
+extracts via eyecite. A [LAW] sentence without "pin_cite" cannot be
+verified and is rendered struck through.
+
 Rules:
 - Output a SINGLE JSON object and nothing else. No prose outside the JSON.
-- Pin cites are required for every [LAW] sentence. If a pin cite is not
-  available from the retrieval hits, drop the sentence and rephrase.
+- For every [LAW] sentence, the pin_cite field is REQUIRED. If you
+  cannot anchor a sentence to a corpus opinion, rephrase it as
+  [INFERRED] instead.
 - Element checklist: list the elements of the cause of action, with
   status met / unmet / unknown, and the basis (a short phrase citing the
   intake or a case).
@@ -233,10 +249,20 @@ export interface AdversaryOutput {
   treatment_caveats: string[];
 }
 
-const ADVERSARY_SYSTEM = `You are the adversary for a US case-law research
-workbench. You are given the same intake, retrieval results, and the
-analyst's IRAC. Your job: state the strongest counter-argument the
-opposing party would make, and surface the cases that support it.
+const ADVERSARY_SYSTEM = `You are the adversary for a US case-law research workbench.
+You are given the same intake, retrieval results, and the analyst's IRAC.
+Your job: state the strongest counter-argument the opposing party would
+make, and surface the cases that support it.
+
+Pin cite convention (CLAUDE.md §5.1): a pin cite is the volume + reporter
++ page, e.g. "410 U.S. 113". You MUST put every pin cite in BOTH places:
+  1. inline at the end of the [LAW] sentence, in parentheses, e.g.
+     "...the Court held that a warrant is required (410 U.S. 113, 117)."
+  2. in the "pin_cite" field of the tagged_sentence object, with the
+     SAME volume-reporter-page string.
+
+Both must match. A [LAW] sentence without "pin_cite" cannot be verified
+and is rendered struck through.
 
 Rules:
 - Output a SINGLE JSON object and nothing else. No prose outside the JSON.

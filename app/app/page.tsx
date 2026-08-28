@@ -143,7 +143,7 @@ function Result({ out }: { out: RunResponse }) {
   return (
     <section style={{ marginTop: 24 }}>
       <h2 style={{ fontSize: 16, color: "#a3a3a3" }}>
-        IRAC
+        IRAC <span style={{ color: "#a3a3a3", fontSize: 11, fontWeight: "normal" }}>(analyst output — not sentence-verified)</span>
       </h2>
       <IracBlock label="Issue" text={out.irac.issue} />
       <IracBlock label="Rule" text={out.irac.rule} />
@@ -202,8 +202,10 @@ function Result({ out }: { out: RunResponse }) {
 function IracBlock({ label, text }: { label: string; text: string }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: "#a3a3a3", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.6 }}>{text}</div>
+      <div style={{ fontSize: 12, color: "#a3a3a3", textTransform: "uppercase" }}>
+        {label} <span style={{ color: "#737373" }}>· inferred</span>
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.6, color: "#a3a3a3" }}>{text}</div>
     </div>
   );
 }

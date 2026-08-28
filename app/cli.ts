@@ -95,6 +95,7 @@ async function main() {
       process.exit(2);
     }
     const app = openApp();
+    const title = facts.length > 80 ? facts.slice(0, 77) + "..." : facts;
     const caseId = Number(
       app
         .prepare(
@@ -102,7 +103,7 @@ async function main() {
         )
         .run(
           `cli-${Date.now()}`,
-          "CLI run",
+          title,
           facts
         ).lastInsertRowid
     );
@@ -113,7 +114,7 @@ async function main() {
           JSON.stringify(out.intake, null, 2)
       );
       console.log(
-        `\n${BOLD}=== ANALYST IRAC ===${RESET}\n` +
+        `\n${BOLD}=== ANALYST IRAC (analyst output, not sentence-verified) ===${RESET}\n` +
           JSON.stringify(out.analyst.irac, null, 2)
       );
       console.log(
@@ -121,9 +122,9 @@ async function main() {
           out.adversary.counter_argument
       );
       console.log(
-        `\n${BOLD}=== DRAFT (${out.draft.overall.toUpperCase()}) ===${RESET}\n` +
-          `${DIM}DRAFT — REQUIRES LICENSED REVIEW — NOT LEGAL ADVICE${RESET}\n`
+        `\n${BOLD}=== DRAFT (${out.draft.overall.toUpperCase()}) ===${RESET}`
       );
+      console.log(`${DIM}DRAFT — REQUIRES LICENSED REVIEW — NOT LEGAL ADVICE${RESET}`);
       for (const s of out.draft.sentences) {
         console.log("  " + renderSentence(s));
       }
