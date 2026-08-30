@@ -1,6 +1,6 @@
 # G3 verification — five fact patterns end to end
 
-Run timestamp: 2026-08-29 03:27 UTC — **LIVE PASS** (hardened, 12 GB host, other apps freed)
+Run timestamp: 2026-08-30 23:30 UTC — **LIVE PASS** (this tree; Ollama live, 197 GB corpus attached; committed evidence `logs/g3-report.json` offline:false overall:pass). Prior live pass 2026-08-29 documented below.
 Pipeline: `alex run "<facts>"` (CLI) or `POST /api/run` (web UI).
 Composition: intake → researcher (qwen3.5:9b) → swap → analyst + adversary (qwen3:14b, batched, ≤2 swaps) → **async** G2 Verifier (`verify_async.ts`, `spawn` not `spawnSync`) → **drafter template** (`draft.ts`, banner in code) → render.
 Harness: `evals/g3-five-patterns.json` (5 patterns) + `evals/run_g3.ts` (`pnpm g3` / `pnpm g3:offline`). Single-flight mutex `run.ts:50` + `llm.ts:66` retry serializes swaps so concurrent `POST /api/run` queue instead of `fetch failed`. Offline harness skips LLM but checks deterministic gates (tag, adversary, audit).
