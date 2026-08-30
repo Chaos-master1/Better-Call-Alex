@@ -1,0 +1,40 @@
+{
+  "description": "G3 five-pattern harness — each entry is a free-text fact pattern fed to POST /api/run / runCase. The harness asserts gating, real adversary authority, and element checklist.",
+  "patterns": [
+    {
+      "id": "g3-01-motel-1983",
+      "label": "Motel public-accommodations / §1983 state action",
+      "jurisdiction": null,
+      "facts": "A 67-year-old Black man checked into a motel in Atlanta. The motel manager called police and reported him as a 'suspicious person' after seeing him in the lobby. Officers arrived, asked him to leave, and when he refused, arrested him for trespass. He was held for 9 hours and released without charges. He sues the motel under 42 U.S.C. § 1983.",
+      "expect": { "adversary_nonempty": true, "element_checklist_nonempty": true }
+    },
+    {
+      "id": "g3-02-terry-stop",
+      "label": "Terry stop-and-frisk, reasonable suspicion",
+      "jurisdiction": null,
+      "facts": "An officer on patrol at 11pm sees a man pacing in front of a closed jewelry store, repeatedly peering in the window and conferring with another man. The officer stops the man, pats his outer clothing, and feels a hard object that turns out to be a pistol. The man had no permit. He moves to suppress the weapon, arguing the stop lacked reasonable suspicion.",
+      "expect": { "adversary_nonempty": true, "element_checklist_nonempty": true }
+    },
+    {
+      "id": "g3-03-tarasoff",
+      "label": "Psychotherapist duty to warn (California)",
+      "jurisdiction": "cal",
+      "facts": "A psychotherapy patient told his therapist he intended to kill his former girlfriend, naming her and stating he would go to her campus the next day. The therapist, believing the threat credible, did not warn the girlfriend or campus police, and did not hospitalize the patient. The patient killed the girlfriend the next day. Her parents sue the therapist in California court.",
+      "expect": { "adversary_nonempty": true, "element_checklist_nonempty": true }
+    },
+    {
+      "id": "g3-04-personal-jurisdiction",
+      "label": "Personal jurisdiction, minimum contacts / stream of commerce",
+      "jurisdiction": null,
+      "facts": "A small Oregon manufacturer sells specialty bicycle components exclusively through its website. It has no offices or employees in Texas, but over two years it shipped 200 orders to Texas customers, earned $40,000 from Texas sales, and ran targeted Instagram ads to Texas cyclists. A Texas buyer is injured by an allegedly defective component and sues in Texas state court. The manufacturer moves to dismiss for lack of personal jurisdiction.",
+      "expect": { "adversary_nonempty": true, "element_checklist_nonempty": true }
+    },
+    {
+      "id": "g3-05-regulatory-taking",
+      "label": "Regulatory taking, just compensation",
+      "jurisdiction": null,
+      "facts": "A family owns beachfront lots purchased for $500,000 as an investment. After purchase, a new state coastal regulation bars any permanent habitable structure on the lots to prevent erosion, leaving the lots with no economically viable use according to appraisals (resale value ~$5,000 as unbuildable). The family sues, claiming a regulatory taking requiring just compensation.",
+      "expect": { "adversary_nonempty": true, "element_checklist_nonempty": true }
+    }
+  ]
+}

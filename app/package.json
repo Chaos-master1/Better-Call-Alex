@@ -11,7 +11,9 @@
     "eval": "tsx ../evals/run_eval.ts",
     "bench": "tsx ../evals/bench_latency.ts",
     "test": "tsx --test \"lib/**/*.test.ts\" && tsx ../evals/run_g2_fixtures.ts",
-    "g2": "tsx ../evals/run_g2_fixtures.ts"
+    "g2": "tsx ../evals/run_g2_fixtures.ts",
+    "g3": "tsx ../evals/run_g3.ts",
+    "g3:offline": "tsx ../evals/run_g3.ts --offline"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

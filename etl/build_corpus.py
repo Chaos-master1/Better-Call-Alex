@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from common import (
+    BOUNDARY_RE,
     BULK,
     CLUSTERS_DB,
     CORPUS_DB,
@@ -29,6 +30,7 @@ from common import (
     CSV_KWARGS,
     db_connect,
     done_marker,
+    find_resync_offset,
     guard_int,
     init_corpus,
     is_done,
@@ -42,7 +44,9 @@ import textclean
 
 DATA_REPORT = Path(__file__).resolve().parent.parent / "docs" / "g0-join-coverage.json"
 
-BOUNDARY_LINE_RE = re.compile(rb'^"(\d+)","', re.M)
+# canonical boundary is the date-anchored one from common.py; keep the old
+# name as an alias so internal references stay readable and diff is minimal.
+BOUNDARY_LINE_RE = BOUNDARY_RE
 LEADING_ID_RE = re.compile(rb'^"(\d+)"')
 
 OPINION_HEADER = [
@@ -251,8 +255,23 @@ def stage_small():
                 continue
             cl = guard_int(r[idx["cluster_id"]])
             if cl is not None:
-                batch.append((cl, r[idx["volume"]], r[idx["reporter"]],
-                              r[idx["page"]], r[idx["type"]]))
+                vol = r[idx["volume"]].strip()
+                pg = r[idx["page"]].strip()
+                # normalize numeric fields to match lookup (P1-3)
+                try:
+                    vol = str(int(vol)) if vol else vol
+                except ValueError:
+                    pass
+                try:
+                    pg = str(int(pg)) if pg else pg
+                except ValueError:
+                    pg = "".join(ch for ch in pg if ch.isdigit()) or pg
+                    try:
+                        pg = str(int(pg)) if pg else pg
+                    except ValueError:
+                        pass
+                batch.append((cl, vol, r[idx["reporter"]].strip(),
+                              pg, r[idx["type"]]))
             tick()
             if len(batch) >= 1_000_000:
                 conn.executemany("INSERT INTO citation_strings VALUES (?,?,?,?,?)", batch)
@@ -352,22 +371,15 @@ def stage_parentheticals():
 # ---------------------------------------------------------------- shard worker
 
 def find_resync(f, start):
-    CHUNK = 16 * 1024 * 1024
-    OVERLAP = 64
-    base = start
-    prev_tail = b""
-    f.seek(start)
-    while True:
-        buf = f.read(CHUNK)
-        if not buf:
-            return None
-        window = prev_tail + buf
-        wbase = base - len(prev_tail)
-        m = BOUNDARY_LINE_RE.search(window)
-        if m:
-            return wbase + m.start()
-        base += len(buf)
-        prev_tail = window[-OVERLAP:]
+    """Shard resync: delegate to the canonical BOUNDARY_RE in common.py."""
+    # 64 MB lookahead is enough for any record; use a huge end sentinel.
+    # The caller (iter_records) bounds the shard by nominal_end and stops
+    # yielding once the next boundary is at/after that offset — so the
+    # sentinel here does not change semantics, it just reuses the single
+    # canonical scanner.
+    end = start + 256 * 1024 * 1024
+    off = find_resync_offset(f, start, end)
+    return off if off != end else None
 
 
 def iter_records(path, index, total):

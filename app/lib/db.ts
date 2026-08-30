@@ -42,6 +42,22 @@ export function normalizeReporter(reporter: string): string {
   return REPORTER_ALIASES[reporter.trim().toLowerCase()] ?? reporter.trim();
 }
 
+function normalizeCiteNum(s: string): string {
+  const t = s.trim();
+  const n = Number(t);
+  return Number.isFinite(n) ? String(Math.trunc(n)) : t;
+}
+
+export function normalizeVolume(volume: string): string {
+  return normalizeCiteNum(volume);
+}
+export function normalizePage(page: string): string {
+  // keep only leading numeric portion if eyecite appends suffixes; fallback to raw
+  const digits = page.replace(/[^\d]/g, "");
+  if (digits) return normalizeCiteNum(digits);
+  return normalizeCiteNum(page);
+}
+
 /**
  * Exact citation -> cluster resolution (§3 step 1: citation lookup is never
  * a search). Shared by the CLI and the G2 Verifier. De-indexed opinions are
@@ -53,21 +69,25 @@ export function resolveCluster(
   reporter: string,
   page: string
 ): LookupResult | null {
+  const vol = normalizeVolume(volume);
+  const pg = normalizePage(page);
   const candidates = [reporter, normalizeReporter(reporter)];
-  for (const rep of candidates) {
+  // dedupe when reporter already canonical
+  const uniqReps = [...new Set(candidates)];
+  for (const rep of uniqReps) {
     const rows = db
       .prepare(
         `SELECT DISTINCT cs.cluster_id, cs.volume, cs.reporter, cs.page, cs.type,
-                o.id AS opinion_id, o.case_name, o.case_name_short, o.date_filed,
-                o.court_id, o.precedential_status, o.citation_count
-         FROM citation_strings cs
-         JOIN opinions o ON o.cluster_id = cs.cluster_id
-         WHERE cs.volume = ? AND cs.reporter = ? AND cs.page = ?
-           AND o.blocked = 0
-         ORDER BY CASE WHEN o.type LIKE '%lead%' THEN 0
-                       WHEN o.type LIKE '%combined%' THEN 1 ELSE 2 END, o.id`
+                 o.id AS opinion_id, o.case_name, o.case_name_short, o.date_filed,
+                 o.court_id, o.precedential_status, o.citation_count
+          FROM citation_strings cs
+          JOIN opinions o ON o.cluster_id = cs.cluster_id
+          WHERE cs.volume = ? AND cs.reporter = ? AND cs.page = ?
+            AND o.blocked = 0
+          ORDER BY CASE WHEN o.type LIKE '%lead%' THEN 0
+                        WHEN o.type LIKE '%combined%' THEN 1 ELSE 2 END, o.id`
       )
-      .all(String(Number(volume)), rep, String(Number(page))) as Array<
+      .all(vol, rep, pg) as Array<
       LookupResult & {
         volume: string;
         reporter: string;

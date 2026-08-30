@@ -30,11 +30,15 @@ function main() {
 
   try {
     console.log("case".padEnd(26), "expect", "got  ", "checks");
+    let caughtAdversarial = 0;
     for (const f of spec.cases) {
       const report = verifyText(db, f.text);
       const serialized = JSON.stringify(report);
 
-      if (f.expect_overall === "fail") adversarial++;
+      if (f.expect_overall === "fail") {
+        adversarial++;
+        if (report.overall === "fail") caughtAdversarial++;
+      }
       if (report.overall === "fail") caught++;
 
       const missingChecks = f.expect_contains.filter((s) => !serialized.includes(s));
@@ -64,16 +68,16 @@ function main() {
       }
     }
 
-    const rate = adversarial ? ((caught / adversarial) * 100).toFixed(1) : "n/a";
+    const rate = adversarial ? ((caughtAdversarial / adversarial) * 100).toFixed(1) : "n/a";
     console.log(
-      `\nfabrication catch rate: ${caught}/${adversarial} (${rate}%) — gate requires 100%`
+      `\nfabrication catch rate: ${caughtAdversarial}/${adversarial} (${rate}%) — gate requires 100% (raw fails: ${caught})`
     );
     if (failures.length) {
       console.error("\nFAILURES:");
       for (const f of failures) console.error("  " + f);
       process.exit(1);
     }
-    if (adversarial > 0 && caught !== adversarial) process.exit(1);
+    if (adversarial > 0 && caughtAdversarial !== adversarial) process.exit(1);
     console.log("G2 FIXTURE GATE: PASS");
   } finally {
     db.close();

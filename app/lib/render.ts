@@ -19,6 +19,7 @@
  * analyst returns a sentence that is not tagged, the gate rejects it.
  */
 import { verifyText, type VerificationReport } from "./verify/verify.js";
+import { verifyTextAsync } from "./verify/verify_async.js";
 import type Database from "better-sqlite3";
 
 export type ClaimTag = "RECORD" | "LAW" | "INFERRED";
@@ -51,6 +52,45 @@ export interface RenderedDraft {
   report: VerificationReport;
   /** Overall: pass iff every sentence verified AND every [LAW] sentence has a pin cite. */
   overall: "pass" | "fail";
+}
+
+/** Async variant — does not block the event loop (preferred for the server). */
+export async function verifyTaggedSentencesAsync(
+  db: Database.Database,
+  sentences: TaggedSentence[]
+): Promise<RenderedDraft> {
+  for (const [i, s] of sentences.entries()) {
+    if (!s.tag) throw new Error(`[verify] sentence ${i} is untagged (CLAUDE.md §5.3)`);
+  }
+  const parts = sentences.map((s) => {
+    const cite = s.pin_cite ? ` (${s.pin_cite})` : "";
+    return `[${s.tag}] ${s.text}${cite}`;
+  });
+  const draft = parts.join(" ");
+  const report = await verifyTextAsync(db, draft);
+  const offsets = sentenceCharRanges(draft, sentences);
+  const bySentence: VerifiedSentence[] = sentences.map((s, i) => {
+    const [a, b] = offsets[i];
+    const cits = report.citations.filter((c) => c.cite_start >= a && c.cite_end <= b);
+    const quotes = report.quotes.filter((q) => q.start >= a && q.end <= b);
+    const detail: string[] = [];
+    let verified = true;
+    for (const c of cits) {
+      detail.push(`cite '${c.citation_text}' → ${c.status}`);
+      if (c.status !== "verified") verified = false;
+    }
+    for (const q of quotes) {
+      detail.push(`quote '${q.quote.slice(0, 30)}…' → ${q.status}`);
+      if (q.status !== "verified") verified = false;
+    }
+    if (s.tag === "LAW" && !s.pin_cite) {
+      detail.push("LAW sentence without pin cite → unverified");
+      verified = false;
+    }
+    return { index: i, tag: s.tag, text: s.text, pin_cite: s.pin_cite, verified, detail, inferred: s.tag === "INFERRED" };
+  });
+  const overall: "pass" | "fail" = report.overall === "pass" && bySentence.every((s) => s.verified) ? "pass" : "fail";
+  return { draft, sentences: bySentence, report, overall };
 }
 
 /**

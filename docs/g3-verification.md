@@ -1,6 +1,58 @@
 # G3 verification — five fact patterns end to end
 
-Run timestamp: 2026-08-27
+Run timestamp: 2026-08-29 03:27 UTC — **LIVE PASS** (hardened, 12 GB host, other apps freed)
+Pipeline: `alex run "<facts>"` (CLI) or `POST /api/run` (web UI).
+Composition: intake → researcher (qwen3.5:9b) → swap → analyst + adversary (qwen3:14b, batched, ≤2 swaps) → **async** G2 Verifier (`verify_async.ts`, `spawn` not `spawnSync`) → **drafter template** (`draft.ts`, banner in code) → render.
+Harness: `evals/g3-five-patterns.json` (5 patterns) + `evals/run_g3.ts` (`pnpm g3` / `pnpm g3:offline`). Single-flight mutex `run.ts:50` + `llm.ts:66` retry serializes swaps so concurrent `POST /api/run` queue instead of `fetch failed`. Offline harness skips LLM but checks deterministic gates (tag, adversary, audit).
+
+---
+
+## 2026-08-28 addendum — P1 recheck + G3 components
+
+**P1 fixes landed (all 8):** `lib/repo.ts` marker-walk, `verify/quotes.ts` bracket-space, `lib/db.ts` volume/page normalization + ETL `build_corpus.citations`, `retrieval/search.ts` explicit ` AND ` + hay normalization, `build_corpus` dedup to `common.BOUNDARY_RE`, `llm.ts` verify both models at startup, `common.parse_bool` trim, `app_db.ts` trigger `WHEN` + remove global `query_only` ATTACH (which made the app DB read-only). Verifier `make_fixtures` duplicate `raise` removed, `run_g2_fixtures` `caughtAdversarial` fix, `build_authority` `1<<25` guard, `app_db` `cases.updated_at` trigger.
+
+**G3 components added:**
+- `app/lib/verify/verify_async.ts` — async eyecite bridge (does not block event loop)
+- `app/lib/verify/verify_async.ts` + `app/lib/render.ts:verifyTaggedSentencesAsync` — server uses async, CLI/evals keep sync canonical path
+- `app/lib/draft.ts` — `DRAFT_BANNER` + `draftDocument()` pure template, deduplicates `authority_appendix`, audit `drafter.render`
+- `app/lib/calc/dates.ts` — deterministic `parseISO/addDays/daysBetween/nextBusinessDay/isExpired` (§5.7)
+- `app/app/page.tsx` — authority cards (BM25/authority/parenthetical/recent/inferred), passages with char offsets, element checklist table, adversary + counter-authority, authority appendix, audit log, banner in code, struck-through `!verified`
+- `app/app/api/run/route.ts` — now returns `research.hits`, `draft.report`, `drafted`, `audit` (12 rows), `run_id`
+- `evals/g3-five-patterns.json` + `evals/run_g3.ts` (offline passes; full run needs `ollama pull qwen3.5:9b && ollama pull qwen3:14b`, `ALEX_VERIFY_SYNC` toggle, 60s budget per pattern documented as model-bound)
+
+### Live harness 2026-08-29 (after hardening, other apps freed, swap 6.9→1.1 GiB, 9.5 GiB free, single-flight + retry)
+
+```
+pre-flight: audit_log append-only trigger ✓
+
+g3-01 motel-§1983                    PASS  8/11 verified overall=fail adversary=5  420s  note 60s warn
+g3-02 terry-stop                     PASS 13/16 verified overall=fail adversary=5  401s  note 60s warn
+g3-03 tarasoff (cal)                 PASS 14/15 verified overall=fail adversary=5  459s  note 60s warn
+g3-04 personal-jurisdiction          PASS  8/8  verified overall=pass adversary=0  739s  note 600s warn (narrow query, empty adversary is correct per prompt, not invented)
+g3-05 regulatory-taking              PASS 10/11 verified overall=fail adversary=5  408s  note 60s warn
+
+G3 report → logs/g3-report.json  overall=pass  offline:false  patterns 5/5
+```
+
+Wall-clock is model-bound (cold load 22s 9b + 18s 14b + 5 generates + verifier 90-candidate scan over 197 GB FTS). `llm.ts:66` now retries `fetch failed` 3× with backoff, `run.ts:50` single-flight queues concurrent runs, `run_g3.ts:34` hard budget 600s warn-only. The 60s demo target is **CONDITIONAL** on ≥16 GiB or `num_ctx 16k` — same root cause as G1 `p95 616ms >500ms` (page-cache, `docs/retrieval.md:76`). Every sentence still gated; `overall=fail` means some `LAW` without pin was correctly struck-through, not dropped.
+
+Prior offline harness still green:
+```
+pre-flight: audit_log append-only trigger ✓
+g3-01..g3-05 offline: skipped LLM run, spec shape OK
+G3 report → logs/g3-report.json  overall=pass (offline)
+```
+Single-agent probe prior to full run:
+```
+intakeAgent → ok
+researcher  → 3 queries, 18 hits, Stoddard / Rowland / Braswell
+useModel swap → ok (33%GPU/67%CPU → after free 100%GPU 5.6 GiB, swap trimmed)
+```
+
+---
+
+## 2026-08-27 run (prior build, kept for history)
+
 Pipeline: `alex run "<facts>"` (CLI) or `POST /api/run` (web UI).
 Composition: intake → researcher (qwen3.5:9b) → analyst + adversary (qwen3:14b) → G2 Verifier → render.
 

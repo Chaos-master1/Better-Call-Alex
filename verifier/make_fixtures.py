@@ -93,7 +93,6 @@ def pick_sentence(text, used):
         used.add(key)
         return " ".join(words)
     raise RuntimeError("no quotable sentence found")
-    raise RuntimeError("no quotable sentence found")
 
 
 def alter_one_word(sentence, cited_text_norm):

@@ -1,16 +1,10 @@
 /**
  * App database schema (CLAUDE.md §3, §5.6). Read-write: cases, documents,
- * messages, runs, audit_log. The corpus is ATTACHed read-only.
+ * messages, runs, audit_log. The corpus is accessed via openCorpus()
+ * (dedicated read-only handle), not by ATTACHing into this connection.
  *
  * audit_log is append-only, enforced by triggers that reject UPDATE and
  * DELETE — not by convention (§5.6).
- *
- * The corpus alias is made read-only by issuing `PRAGMA corpus.query_only
- * = 1` after ATTACH: the better-sqlite3 build used here does not support
- * the `file:...?mode=ro` URI form in ATTACH strings, but the query_only
- * pragma on an attached DB has the same effect (rejects writes, creates,
- * and drops). The corpus handle from `openCorpus()` is the canonical
- * read-only path; this attachment is for cross-DB joins.
  */
 import Database from "better-sqlite3";
 import path from "node:path";
@@ -26,6 +20,11 @@ CREATE TABLE IF NOT EXISTS cases (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TRIGGER IF NOT EXISTS cases_touch_updated
+AFTER UPDATE ON cases WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE cases SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
 
 CREATE TABLE IF NOT EXISTS documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,8 +87,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind_ts ON audit_log(kind, ts);
 `;
 
 /**
- * Open the app database. ATTACHes the corpus read-only so a single
- * connection can join against `opinions`, `cites`, `parentheticals`, etc.
+ * Open the app database. The corpus is NOT attached here: search/verify use
+ * a dedicated read-only handle from openCorpus() (better-sqlite3, query_only).
+ * Attaching the corpus via PRAGMA query_only is connection-global in SQLite
+ * (it would make the app DB read-only too) and the file: URI with spaces in
+ * this repo's path is not reliably handled by ATTACH. No app code actually
+ * joins through the attached alias, so we keep the handle clean.
  * If the app DB file does not exist, the schema is created.
  */
 export function openApp(): Database.Database {
@@ -99,12 +102,6 @@ export function openApp(): Database.Database {
   db.exec(SCHEMA);
   db.pragma(`journal_mode = WAL`);
   db.pragma(`foreign_keys = ON`);
-  // ATTACH the corpus and immediately make the attached alias read-only.
-  // Without this, a stray `UPDATE corpus.opinions` would silently corrupt
-  // the 197 GB corpus file. Tested: query_only rejects writes, creates,
-  // and drops on the attached DB.
-  db.exec(`ATTACH DATABASE '${CORPUS_PATH.replace(/'/g, "''")}' AS corpus`);
-  db.exec(`PRAGMA corpus.query_only = 1`);
   return db;
 }
 

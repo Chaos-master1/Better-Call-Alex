@@ -74,9 +74,27 @@ function getClient(): Ollama {
  * Hard-fail with a helpful error if the tag is missing — the previous build
  * lost weeks to `gemma4:12b`, which does not exist.
  */
+async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      last = e;
+      const msg = String(e?.message ?? e);
+      const transient = /fetch failed|ECONNREFUSED|timeout|UND_ERR|aborted/i.test(msg);
+      if (!transient || i === attempts - 1) throw e;
+      const backoff = 1500 * (i + 1) + Math.random() * 500;
+      console.warn(`[llm] ${label} transient (${msg.slice(0,120)}) — retry ${i + 1}/${attempts} in ${Math.round(backoff)}ms`);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+  throw last;
+}
+
 async function verifyModel(model: string): Promise<void> {
   const c = getClient();
-  const list = await c.list();
+  const list = await withRetry(() => c.list(), `verifyModel(${model})`);
   const names = new Set(list.models.map((m) => m.name));
   if (!names.has(model)) {
     fail(
@@ -126,8 +144,10 @@ export async function verifyEnvironment(): Promise<void> {
     }
   }
 
-  // Verify the resident model is actually installed.
+  // Verify the resident model is actually installed, plus the analyst
+  // model so a late swap does not fail 60s into a pipeline (P1-6).
   await verifyModel(RESIDENT_MODEL);
+  await verifyModel(ANALYST_MODEL);
 
   verified = true;
 }
@@ -151,15 +171,19 @@ export async function generate(
   };
   if (opts.stop && opts.stop.length > 0) options.stop = opts.stop;
   const t0 = performance.now();
-  const res = await c.generate({
-    model: activeModel,
-    prompt,
-    system: opts.system,
-    stream: false,
-    think: false,
-    options: options as any,
-    format: opts.jsonMode ? "json" : undefined,
-  });
+  const res = await withRetry(
+    () =>
+      c.generate({
+        model: activeModel,
+        prompt,
+        system: opts.system,
+        stream: false,
+        think: false,
+        options: options as any,
+        format: opts.jsonMode ? "json" : undefined,
+      }),
+    `generate(${activeModel})`
+  );
   const ms = performance.now() - t0;
   return {
     model: activeModel,
@@ -204,14 +228,18 @@ export async function chat(
   };
   if (opts.stop && opts.stop.length > 0) options.stop = opts.stop;
   const t0 = performance.now();
-  const res = await c.chat({
-    model: activeModel,
-    messages,
-    stream: false,
-    think: false,
-    options: options as any,
-    format: opts.jsonMode ? "json" : undefined,
-  });
+  const res = await withRetry(
+    () =>
+      c.chat({
+        model: activeModel,
+        messages,
+        stream: false,
+        think: false,
+        options: options as any,
+        format: opts.jsonMode ? "json" : undefined,
+      }),
+    `chat(${activeModel})`
+  );
   const ms = performance.now() - t0;
   return {
     model: activeModel,

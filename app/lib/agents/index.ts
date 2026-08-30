@@ -330,7 +330,19 @@ async function counterQueryFrom(
     authority AGAINST the analyst's conclusion. Output only the query string.`,
     { maxTokens: 60 }
   );
-  return r.content.trim().split("\n")[0].slice(0, 200);
+  const raw = r.content.trim().split("\n")[0].slice(0, 200).trim();
+  // P2: validate — empty / natural-language question → fallback template
+  // so adversary always has at least a lexically valid retrieval seed.
+  if (!raw || raw.length < 3 || raw.endsWith("?")) {
+    const fallback = claim ? `${claim} defense exception` : "affirmative defense exception";
+    return fallback.slice(0, 200);
+  }
+  const hasToken = raw.toLowerCase().split(/[^a-z0-9']+/).some((t) => t.length > 2);
+  if (!hasToken) {
+    const fallback = claim ? `${claim} defense exception` : "affirmative defense exception";
+    return fallback.slice(0, 200);
+  }
+  return raw;
 }
 
 // =====================================================================

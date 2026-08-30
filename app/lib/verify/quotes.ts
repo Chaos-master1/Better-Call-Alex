@@ -70,7 +70,7 @@ function normalizeWithMap(s: string): Normed {
 
 /** Expand editorial bracket alterations: "[t]he" -> "the", "[her]" -> "her". */
 function expandBrackets(normQuote: string): string {
-  return normQuote.replace(/\[([a-z][a-z']*)\]\s?/g, "$1");
+  return normQuote.replace(/\[([a-z][a-z']*)\]/g, "$1");
 }
 
 function locate(

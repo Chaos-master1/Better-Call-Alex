@@ -15,9 +15,11 @@ export function parseCitation(
     .trim()
     .match(/^(\d{1,4})\s+([A-Za-z][A-Za-z0-9 .']*?\.?)\s+(\d{1,6})$/);
   if (!m) return null;
+  const vol = m[1].trim();
+  const pg = m[3].trim();
   return {
-    volume: String(Number(m[1])),
+    volume: String(Number(vol)),
     reporter: m[2].trim(),
-    page: String(Number(m[3])),
+    page: String(Number(pg)),
   };
 }

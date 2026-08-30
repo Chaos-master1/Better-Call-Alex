@@ -69,7 +69,10 @@ def guard_int(value, default=None):
 
 
 def parse_bool(value):
-    return 1 if value in ("t", "T", "true", "True", "1") else 0
+    if value is None:
+        return 0
+    v = str(value).strip()
+    return 1 if v in ("t", "T", "true", "True", "1") else 0
 
 
 def done_marker(path: Path):
@@ -107,7 +110,7 @@ def progress_logger(label, total=None, every=100_000):
 def db_connect(path, readonly=False):
     path = Path(path)
     if readonly:
-        assert path.exists(), f"{path} missing"
+        assert path.exists(), f"{path} missing (resolved CORPUS_DB={path})"
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     else:
         conn = sqlite3.connect(str(path), timeout=120)

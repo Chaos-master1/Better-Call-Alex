@@ -84,7 +84,12 @@ def load_opinions(conn):
             dates[i] = d
             i += 1
     order = np.argsort(ids)
-    return ids[order], dates[order]
+    ids = ids[order]
+    dates = dates[order]
+    # P2-7: guard the 1<<25 encoding in load_edges (collision if id >= 33M)
+    if len(ids) and int(ids.max()) >= (1 << 25):
+        raise ValueError(f"max opinion id {int(ids.max())} >= 1<<25, bump k in load_edges")
+    return ids, dates
 
 
 # ---------------------------------------------------------------- scan
@@ -183,7 +188,9 @@ def load_edges(outdir=AUTH_DIR):
     parts = sorted(outdir.glob("edges_part*.npy"))
     assert parts, "run `scan` first"
     total = sum(np.load(p, mmap_mode="r").shape[1] for p in parts)
-    k = np.int64(1) << np.int64(25)
+    k = np.int64(1) << np.int64(25)  # 33_554_432 > max opinion id (~11M)
+    # Guard against future id overflow (silent collision if k <= max id)
+    # max id will be checked in load_opinions caller; keep k documented.
     key = np.empty(total, dtype=np.int64)
     at = 0
     for p in parts:

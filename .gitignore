@@ -6,6 +6,7 @@ node_modules/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.tsbuildinfo
 .shards/
 next/
 app/.next/

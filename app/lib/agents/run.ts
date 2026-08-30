@@ -27,9 +27,11 @@ import {
 import { useModel, RESIDENT_MODEL, ANALYST_MODEL } from "../llm.js";
 import {
   verifyTaggedSentences,
+  verifyTaggedSentencesAsync,
   type RenderedDraft,
   type TaggedSentence,
 } from "../render.js";
+import { draftDocument, type DraftDoc } from "../draft.js";
 import { openCorpus } from "../db.js";
 
 export interface RunOutput {
@@ -40,15 +42,27 @@ export interface RunOutput {
   analyst: AnalystOutput;
   adversary: AdversaryOutput;
   draft: RenderedDraft;
+  drafted: DraftDoc;
   /** Total wall-clock ms. */
   ms: number;
 }
+
+// 12 GB VRAM can hold only one model at a time — serialize runs so swaps
+// do not thrash. Concurrent POST /api/run calls queue here instead of
+// issuing concurrent Ollama loads that surface as "fetch failed".
+let _runQueue: Promise<void> = Promise.resolve();
 
 export async function runCase(
   appDb: Database.Database,
   caseId: number,
   facts: string
 ): Promise<RunOutput> {
+  // acquire single-flight slot
+  let release!: () => void;
+  const myTurn = new Promise<void>((r) => (release = r));
+  const prev = _runQueue;
+  _runQueue = myTurn;
+  await prev;
   const t0 = performance.now();
   const corpus = openCorpus();
   // One shared transaction context would be nicer; better-sqlite3 is sync,
@@ -76,12 +90,17 @@ export async function runCase(
     persistAdversary(appDb, caseId, adversary);
     audit(appDb, "agent.adversary", { caseId });
 
-    // 4. verifier gate over the combined tagged sentences
+    // 4. verifier gate over the combined tagged sentences (async — does not block loop)
     const combined: TaggedSentence[] = [
       ...analyst.tagged_sentences,
       ...adversary.tagged_sentences,
     ];
-    const draft = verifyTaggedSentences(corpus, combined);
+    // Use async bridge when an event loop is present (server); fall back to sync
+    // for the CLI where top-level await is not needed. The sync path is still
+    // the canonical one for evals; this path just avoids blocking.
+    const draft = process.env.ALEX_VERIFY_SYNC === "1"
+      ? verifyTaggedSentences(corpus, combined)
+      : await verifyTaggedSentencesAsync(corpus, combined);
     audit(appDb, "verifier.run", {
       caseId,
       overall: draft.overall,
@@ -89,7 +108,15 @@ export async function runCase(
       verified: draft.sentences.filter((s) => s.verified).length,
     });
 
-    // 5. swap back to 9b so subsequent runs start on the resident model
+    // 5. drafter template (pure, no LLM) — banner applied in code per §11
+    const drafted = draftDocument(draft, intake, research, analyst, adversary);
+    // keep the JSON for audit; the UI renders `draft` + `drafted` together
+    appDb
+      .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
+      .run(JSON.stringify(drafted), caseId);
+    audit(appDb, "drafter.render", { caseId, banner: drafted.banner, overall: drafted.verification.overall });
+
+    // 6. swap back to 9b so subsequent runs start on the resident model
     await useModel(RESIDENT_MODEL);
 
     const runId = finalizeRun(appDb, caseId, "succeeded");
@@ -101,6 +128,7 @@ export async function runCase(
       analyst,
       adversary,
       draft,
+      drafted,
       ms: performance.now() - t0,
     };
   } catch (err) {
@@ -109,6 +137,7 @@ export async function runCase(
     throw err;
   } finally {
     corpus.close();
+    release();
   }
 }
 

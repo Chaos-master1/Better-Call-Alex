@@ -176,7 +176,7 @@ export function tokenize(query: string): string[] {
 
 export function matchExpression(tokens: string[]): string | null {
   if (tokens.length === 0) return null;
-  return tokens.map((t) => `"${t.replace(/"/g, "")}"`).join(" ");
+  return tokens.map((t) => `"${t.replace(/"/g, "")}"`).join(" AND ");
 }
 
 function jurisdictionCourtIds(
@@ -282,7 +282,11 @@ export function extractPassage(
   tokens: string[],
   len: number = PASSAGE_LEN
 ): Passage {
-  const hay = text.toLowerCase();
+  // Stored text is WS-collapsed to single spaces by the ETL (textclean.WS_RE),
+  // but defensively normalise here so phrase tokens like "qualified immunity"
+  // (joined by a single space) never miss because hay still contains \n or
+  // double spaces on legacy rows (P1-7).
+  const hay = text.toLowerCase().replace(/\s+/g, " ");
   let best = -1;
   let bestCount = -1;
   const positions: number[] = [];
