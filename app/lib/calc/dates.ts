@@ -126,9 +126,17 @@ export function nextBusinessDay(iso: string): string | null {
  *  anniversary month (Feb 28), not the JS-default overflow to Mar 1 — the
  *  common anniversary convention, and the stricter SOL reading. */
 export function isExpired(startISO: string, years: number, asOfISO: string): boolean | null {
-  const start = parseISO(startISO);
+  const deadline = anniversaryDate(startISO, years);
   const asOf = parseISO(asOfISO);
-  if (!start || !asOf) return null;
+  if (!deadline || !asOf) return null;
+  return asOf.getTime() > deadline.getTime();
+}
+
+/** Anniversary of `start` + `years` years, month-end clamped (Feb 29 →
+ *  Feb 28). Shared by isExpired and solDeadline. */
+function anniversaryDate(startISO: string, years: number): Date | null {
+  const start = parseISO(startISO);
+  if (!start) return null;
   if (!Number.isInteger(years)) return null; // fractional years would truncate silently
   const y = start.getUTCFullYear() + years;
   const m = start.getUTCMonth();
@@ -139,5 +147,69 @@ export function isExpired(startISO: string, years: number, asOfISO: string): boo
     // JS overflowed the month (Feb 29 → Mar 1): clamp to month end.
     deadline.setUTCFullYear(y, m + 1, 0);
   }
-  return asOf.getTime() > deadline.getTime();
+  return deadline;
+}
+
+/** A period during which the limitations clock was stopped (e.g. defendant
+ *  absent from the forum, statutory stay, minority of the plaintiff).
+ *  INCLUSIVE of both endpoints, as a lawyer counts: "absent June 1 through
+ *  August 31" is 92 days. */
+export interface TollingWindow {
+  start: string;
+  end: string;
+}
+
+/** SOL deadline with day-for-day tolling. The base deadline is the
+ *  anniversary of `start` + `years` (month-end clamped); every calendar day
+ *  inside the union of `tolling` windows that falls within the running
+ *  period [start, deadline) extends the deadline by one day. The extension
+ *  is iterated to its fixed point: extending the deadline can pull more of
+ *  a window into the period, which extends it further, until stable — so a
+ *  window straddling the original deadline is fully counted, and
+ *  overlapping windows are counted once (union, never double-counted).
+ *
+ *  Returns the UNROLLED anniversary deadline; callers that need a filing
+ *  date roll it with nextBusinessDay(). Returns null on bad input. */
+export function solDeadline(
+  startISO: string,
+  years: number,
+  tolling: TollingWindow[] = []
+): string | null {
+  const start = parseISO(startISO);
+  const base = anniversaryDate(startISO, years);
+  if (!start || !base) return null;
+  const DAY = 86_400_000;
+  // Normalize windows: valid dates only, positive length, INCLUSIVE end
+  // (the endpoint day counts), sorted for the sweep.
+  const windows: Array<[number, number]> = [];
+  for (const w of tolling ?? []) {
+    const s = parseISO(w?.start ?? "");
+    const e = parseISO(w?.end ?? "");
+    if (!s || !e || e.getTime() < s.getTime()) continue;
+    windows.push([s.getTime(), e.getTime() + DAY]);
+  }
+  windows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+  const unionDaysUntil = (limit: number): number => {
+    // Days of the merged windows inside [start, limit).
+    let days = 0;
+    let cur = 0;
+    for (const [s, e] of windows) {
+      if (e <= cur) continue; // already merged
+      const a = Math.max(s, Math.max(cur, start.getTime()));
+      const b = Math.min(e, limit);
+      if (b > a) days += Math.round((b - a) / DAY);
+      cur = Math.max(cur, e);
+      if (cur >= limit) break;
+    }
+    return days;
+  };
+
+  let deadline = base.getTime();
+  for (let iter = 0; iter < 8; iter++) {
+    const extended = base.getTime() + unionDaysUntil(deadline) * DAY;
+    if (extended === deadline) break;
+    deadline = extended;
+  }
+  return toISO(new Date(deadline));
 }

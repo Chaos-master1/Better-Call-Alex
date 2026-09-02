@@ -1,0 +1,10 @@
+{
+ "source": "ecfr live spot-check",
+ "date": "2026-08-31",
+ "sample": "strided, step=431",
+ "checked": 20,
+ "matched": 20,
+ "mismatches": [],
+ "seconds": 62.8,
+ "pass": true
+}

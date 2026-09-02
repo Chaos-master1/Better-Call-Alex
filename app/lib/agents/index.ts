@@ -16,7 +16,7 @@
 
 import { generate } from "../llm.js";
 import type Database from "better-sqlite3";
-import { search, type SearchHit } from "../retrieval/search.js";
+import { search, extractPassage, type SearchHit } from "../retrieval/search.js";
 
 // =====================================================================
 // 1. INTAKE
@@ -345,7 +345,30 @@ export async function adversaryAgent(
   // Find a counter-frame: a query that is the analyst's rule inverted.
   // We do a second retrieval round with that frame to get counter-authority.
   const counterQuery = await counterQueryFrom(intake, analyst);
-  const counterHits = search(db, counterQuery, { limit: 5 });
+  let counterHits = search(db, counterQuery, { limit: 5 });
+  if (counterHits.length === 0) {
+    // Relaxation 1 (docs/g3-verification.md named this the weak point: the
+    // live G3 run had a 0-hit counter round): retry with the counter
+    // frame's longest tokens — the doctrine-bearing words that can
+    // actually conjunct-match.
+    const relaxed = counterQuery
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((t) => t.length > 3 && t !== "the")
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 3)
+      .join(" ");
+    if (relaxed && relaxed !== counterQuery.toLowerCase()) {
+      counterHits = search(db, relaxed, { limit: 5 });
+    }
+  }
+  if (counterHits.length === 0) {
+    // Relaxation 2: deterministic counter-authority — cases whose citation
+    // context against the researcher's top authority speaks of negative
+    // treatment. No model involvement, so the adversary never comes back
+    // with nothing to say.
+    counterHits = negativeTreatmentHits(db, research.hits[0]?.cluster_id ?? null, counterQuery, 5);
+  }
   const payload = {
     intake,
     analyst_irac: analyst.irac,
@@ -373,11 +396,94 @@ export async function adversaryAgent(
   };
 }
 
+/**
+ * Counter-authority mined from the citation graph: citing cases whose
+ * context against `clusterId` (the analyst's primary authority) uses
+ * negative-treatment language. Deterministic, model-free, and always
+ * available — the last rung of the adversary's retrieval ladder.
+ */
+export function negativeTreatmentHits(
+  db: Database.Database,
+  clusterId: number | null,
+  counterQuery: string,
+  limit: number
+): SearchHit[] {
+  if (clusterId == null) return [];
+  const citingRows = db
+    .prepare(
+      `SELECT DISTINCT ci.citing_id
+         FROM cites ci
+         JOIN opinions po ON po.id = ci.cited_id
+        WHERE po.cluster_id = ?
+          AND (lower(ci.context) LIKE '%overruled%'
+            OR lower(ci.context) LIKE '%abrogated%'
+            OR lower(ci.context) LIKE '%declined to follow%'
+            OR lower(ci.context) LIKE '%no longer good law%'
+            OR lower(ci.context) LIKE '%superseded%')
+        LIMIT 40`
+    )
+    .all(clusterId) as Array<{ citing_id: number }>;
+  if (citingRows.length === 0) return [];
+
+  const tokens = counterQuery
+    .toLowerCase()
+    .split(/[^a-z0-9']+/)
+    .filter((t) => t.length > 3 && t !== "the")
+    .slice(0, 6);
+  const metaStmt = db.prepare(
+    "SELECT id, cluster_id, case_name, case_name_short, date_filed, court_id, precedential_status, ocr FROM opinions WHERE id = ?"
+  );
+  const textStmt = db.prepare("SELECT text FROM opinions WHERE id = ?");
+  const hits: SearchHit[] = [];
+  const seen = new Set<number>();
+  for (const { citing_id } of citingRows) {
+    if (hits.length >= limit) break;
+    if (seen.has(citing_id)) continue;
+    seen.add(citing_id);
+    const meta = metaStmt.get(citing_id) as
+      | {
+          id: number;
+          cluster_id: number | null;
+          case_name: string | null;
+          case_name_short: string | null;
+          date_filed: string | null;
+          court_id: string | null;
+          precedential_status: string | null;
+          ocr: number | null;
+        }
+      | undefined;
+    if (!meta) continue;
+    const rawText = (textStmt.get(citing_id) as { text: string } | undefined)?.text ?? "";
+    const passage = rawText
+      ? tokens.length > 0
+        ? extractPassage(rawText, tokens)
+        : extractPassage(rawText, ["overruled"])
+      : { text: "", start: 0, end: 0 };
+    const auth = db
+      .prepare("SELECT treatment_flags FROM authority WHERE opinion_id = ?")
+      .get(citing_id) as { treatment_flags: number | null } | undefined;
+    hits.push({
+      opinion_id: meta.id,
+      cluster_id: meta.cluster_id,
+      case_name: meta.case_name,
+      case_name_short: meta.case_name_short,
+      date_filed: meta.date_filed,
+      court_id: meta.court_id,
+      precedential_status: meta.precedential_status,
+      ocr: !!meta.ocr,
+      scores: { bm25: 0, authority_multiplier: 0, final: 0, parenthetical_hits: 0 },
+      treatment_flags: auth?.treatment_flags ?? 0,
+      cited_by_recent: 0,
+      passages: passage.text ? [passage] : [],
+    });
+  }
+  return hits;
+}
+
 async function counterQueryFrom(
   intake: IntakeOutput,
   analyst: AnalystOutput
-): Promise<string> {
-  // Cheap heuristic: use the claims + a known counter-doctrine phrase.
+): Promise<string> {  // Cheap heuristic: use the claims + a known counter-doctrine phrase.
   // Real adversarial framing is for the model; we just give it a retrieval
   // seed that is the opposite of the analyst's rule.
   const claim = intake.claims[0] ?? "";

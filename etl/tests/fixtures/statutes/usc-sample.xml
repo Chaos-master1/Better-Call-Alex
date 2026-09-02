@@ -1,0 +1,31 @@
+<style xmlns="http://xml.house.gov/schemas/usgpl/usc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<doc>
+<level>
+<section identifier="sec_1983">
+  <num value="1983"/>
+  <heading>Civil action for deprivation of rights</heading>
+  <level>
+    <content>Every person who, under color of any statute, ordinance, regulation, custom, or usage, subjects, or causes to be subjected, any citizen of the United States to the deprivation of any rights, privileges, or immunities secured by the Constitution and laws, shall be liable to the party injured.</content>
+  </level>
+  <level>
+    <note>
+      <heading>Amendments</heading>
+      <content>2002 — Pub. L. 107–273 substituted "Department of Agriculture" for "Department of Agriculture".</content>
+    </note>
+  </level>
+</section>
+<section identifier="sec_1985a">
+  <num value="1985a"/>
+  <heading>Number-only heading section</heading>
+  <level>
+    <content>Body text of the second section.</content>
+  </level>
+  <effective_date>Jan. 6, 1997</effective_date>
+</section>
+<section>
+  <heading>No number: skipped</heading>
+  <content>Orphan content.</content>
+</section>
+</level>
+</doc>
+</style>

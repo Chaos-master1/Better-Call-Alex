@@ -307,26 +307,29 @@ docs/
   data-pipeline.md     ETL detail
   retrieval.md         scoring, filters, offsets
   verifier.md          the contract and its adversarial cases
-  prompts/             the 17 salvaged prompts, versioned as data
-  evals.md             golden sets and how to read them
+  g4-statutes.md       statutes ingestion + calculators + gate evidence
   decisions/           one ADR per reversal
 etl/                   Python 3.12 via uv — runs once, never in production
-  download.py          fetch the ~6 GB of missing bulk files
   build_corpus.py      sharded by byte range, resumable
   build_authority.py   pagerank, recency, treatment flags — power iteration on
                        scipy.sparse CSR (~132 M edges; NetworkX will not hold)
-  statutes.py          eCFR + US Code                              (G4)
+  statutes.py          eCFR (live) + US Code release points (G4)
+  audit_g0.py          the G0 audit harness
   tests/
 verifier/              G2 runtime Python: eyecite subprocess bridge (ADR-001),
                        fixture generator + golden set, treatment-recall
                        measurement against the LegalBench overruling split
 app/                   Next.js + TypeScript
-  lib/db/  lib/llm/  lib/retrieval/  lib/verify/  lib/agents/  lib/calc/
-  app/                 routes
-  components/
-evals/                 golden sets + runner (retrieval p@10, latency, G2 fixtures)
+  cli.ts               alex lookup / search / run
+  lib/db.ts  lib/statute.ts (G4)  lib/llm.ts  lib/app_db.ts
+  lib/retrieval/  lib/verify/ (core.ts + sync/async bridges)  lib/agents/
+  lib/calc/  lib/draft.ts  lib/render.ts
+  app/                 routes, page, error boundary
+evals/                 golden sets + runners (retrieval p@10, latency, G2
+                       fixtures, G3 five-pattern harness with --offline mode)
 data/                  corpus.sqlite, app.sqlite — gitignored
-_archive/              the two prior codebases, untouched, until G3 passes
+logs/                  committed run evidence: g3-report.json, g4-report.json,
+                       g4-statutes-spotcheck.json, audit/*.json
 ```
 
 Python 3.14 has thin ML wheel coverage. Pin a 3.12 venv with `uv`.
@@ -364,7 +367,7 @@ No gate begins before the previous one's verification passes.
 | **G1** | Retrieval + `alex search`: BM25 × authority × parentheticals, passages with offsets | A 30-query hand-built golden set (doctrine, citation lookup, fact pattern, jurisdiction filter) plus LegalBench-RAG (6,858 expert-annotated query/span pairs) for retrieval plumbing — its corpus is contracts, not case law, so the hand-built set is the real quality measure. Record precision@10 — this is the baseline every later change is measured against. p95 latency < 500 ms. |
 | **G2** | **The Verifier** | Adversarial fixtures: fabricated citations, real case / invented quote, real quote / wrong case, one-word-altered quotes, correct cites to overruled cases. **100% catch rate on fabrications is the gate.** Treatment-scan recall checked against `casehold` (2,400 attorney-annotated overruling-vs-nonoverruling sentences). Unit tests, no LLM. |
 | **G3** | The four agents + UI. The 60-second demo. | Five real fact patterns end to end. Every sentence either carries a resolving pin cite or is visibly struck through. The Adversary returns real opposing authority. Nothing reaches the UI ungated by G2. |
-| **G4** | Statutes (eCFR + US Code) + deterministic calculators | 20 sections spot-checked against the live eCFR API. Calculator unit tests covering leap years, weekend/holiday rolls, tolling. |
+| **G4** — **COMPLETE** (2026-09-02, one environment-conditional item) | Statutes (eCFR + US Code) + deterministic calculators | 20/20 sections spot-checked against the live eCFR API (`logs/g4-statutes-spotcheck.json`); 8,621 eCFR sections loaded; calculator tests 36/36 (leap years, cross-year weekend/holiday rolls, tolling fixed-point). US Code adapter + parser are fixture-tested but not live-loaded — uscode.house.gov is unreachable from the dev network. Evidence: `logs/g4-report.json`, `docs/g4-statutes.md`. |
 | **G5** | Case files, drafting, DOCX/PDF export | Draft a motion end to end; every citation in the exported file resolves; exported line breaks survive. (`whiteSpace: pre-wrap` is not a valid react-pdf style prop — it is silently ignored.) |
 
 G2 precedes G3 deliberately. Without a proven Verifier, the agents are just
@@ -448,7 +451,7 @@ Deferred, no failing eval case (per §2 — do not pull in):
 |---|---|
 | `inception` | Only serves the deferred dense-embedding path (§5). |
 | `doctor` | Persistent microservice, conflicts with "no daemons"; revisit only if G5 needs PDF/DOCX intake. |
-| `us-legal-tools` / `uscode` parsers | G4 territory; decide there. |
+| `us-legal-tools` / `uscode` parsers | Decided at G4: hand-rolled parsers in `etl/statutes.py` (stdlib + defusedxml); no dependency needed. |
 | `courts-db` / `reporters-db` | Redundant with the `courts` + `citations` CSVs we already download; revisit only if an eval shows resolution gaps. |
 | `sqlite-zstd` | The deferred compression path (§9.8). |
 | DuckDB for ingestion | Possible bench for CSV parse speed only; SQLite remains the store. |

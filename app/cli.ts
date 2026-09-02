@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { openCorpus, resolveCluster, type LookupResult } from "./lib/db.js";
+import { parseStatuteCites, resolveStatute, statuteTableExists, toStatuteLookup, type StatuteLookup } from "./lib/statute.js";
 import { search } from "./lib/retrieval/search.js";
 import { openApp } from "./lib/app_db.js";
 import { runCase } from "./lib/agents/run.js";
@@ -38,10 +39,24 @@ function renderSentence(s: {
   return `${prefix}${tagStr} ${text}${citeStr}`;
 }
 
-export function lookup(db: ReturnType<typeof openCorpus>, input: string): LookupResult | null {
+export function lookup(
+  db: ReturnType<typeof openCorpus>,
+  input: string
+): LookupResult | StatuteLookup | null {
   const cite = parseCitation(input);
-  if (!cite) return null;
-  return resolveCluster(db, cite.volume, cite.reporter, cite.page);
+  if (cite) {
+    const r = resolveCluster(db, cite.volume, cite.reporter, cite.page);
+    if (r) return r;
+  }
+  // G4: statutory cites ("42 U.S.C. § 1983", "12 C.F.R. § 1026.36") resolve
+  // against the statutes table when the ETL has loaded it.
+  if (statuteTableExists(db)) {
+    for (const s of parseStatuteCites(input)) {
+      const row = resolveStatute(db, s.source, s.title, s.section);
+      if (row) return toStatuteLookup(row);
+    }
+  }
+  return null;
 }
 
 async function main() {

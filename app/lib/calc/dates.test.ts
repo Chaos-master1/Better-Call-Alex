@@ -14,6 +14,7 @@ import {
   nextBusinessDay,
   isExpired,
   federalHolidays,
+  solDeadline,
 } from "./dates.js";
 
 // ——— parseISO: format + overflow guards ———
@@ -182,4 +183,78 @@ test("isExpired is exact across a leap-year boundary", () => {
 
 test("isExpired rejects bad input", () => {
   assert.equal(isExpired("bad", 2, "2026-01-01"), null);
+});
+
+// ——— solDeadline: SOL with tolling ———
+
+test("solDeadline with no tolling equals the anniversary", () => {
+  // 2-year SOL from 2024-01-01 → 2026-01-01 (unrolled)
+  assert.equal(solDeadline("2024-01-01", 2), "2026-01-01");
+});
+
+test("solDeadline clamps Feb 29 starts to the month end", () => {
+  assert.equal(solDeadline("2024-02-29", 1), "2025-02-28");
+});
+
+test("solDeadline rejects fractional years and bad input", () => {
+  assert.equal(solDeadline("2024-01-01", 1.5), null);
+  assert.equal(solDeadline("bad", 2), null);
+});
+
+test("solDeadline extends day-for-day by a tolling window inside the period", () => {
+  // 2-year SOL from 2024-01-01 → 2026-01-01. Defendant outside the forum
+  // from 2024-06-01 to 2024-08-31 = 92 days → deadline 2026-01-01 + 92d.
+  assert.equal(
+    solDeadline("2024-01-01", 2, [{ start: "2024-06-01", end: "2024-08-31" }]),
+    "2026-04-03"
+  );
+});
+
+test("solDeadline converges when a window straddles the original deadline", () => {
+  // Window 2025-12-01..2026-01-15 (46 days). First pass counts only the
+  // December part (31d); the extension pulls January back inside the
+  // period; second pass counts the full 46 → 2026-01-01 + 46d = 2026-02-16.
+  assert.equal(
+    solDeadline("2024-01-01", 2, [{ start: "2025-12-01", end: "2026-01-15" }]),
+    "2026-02-16"
+  );
+});
+
+test("solDeadline counts overlapping windows once (union)", () => {
+  // Two windows sharing 2024-06-15..2024-07-14: union = 2024-06-01..2024-07-31 = 61 days.
+  assert.equal(
+    solDeadline("2024-01-01", 2, [
+      { start: "2024-06-01", end: "2024-07-14" },
+      { start: "2024-06-15", end: "2024-07-31" },
+    ]),
+    "2026-03-03"
+  );
+});
+
+test("solDeadline ignores windows entirely outside the period", () => {
+  // Tolling before accrual or after the deadline has no effect.
+  assert.equal(
+    solDeadline("2024-01-01", 2, [
+      { start: "2023-01-01", end: "2023-12-31" },
+      { start: "2027-01-01", end: "2027-12-31" },
+    ]),
+    "2026-01-01"
+  );
+});
+
+test("solDeadline skips malformed windows", () => {
+  assert.equal(
+    solDeadline("2024-01-01", 2, [
+      { start: "bad", end: "2024-08-31" },
+      { start: "2024-08-31", end: "2024-06-01" }, // reversed
+      { start: "2024-06-01", end: "2024-08-31" }, // the real one (92d)
+    ]),
+    "2026-04-03"
+  );
+});
+
+test("solDeadline composes with nextBusinessDay for the filing date", () => {
+  // 2026-01-01 is a federal holiday (New Year's Day, Thursday): the filing
+  // deadline rolls to Friday 2026-01-02.
+  assert.equal(nextBusinessDay(solDeadline("2024-01-01", 2) ?? ""), "2026-01-02");
 });

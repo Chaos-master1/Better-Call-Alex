@@ -30,6 +30,13 @@
 import type Database from "better-sqlite3";
 import { resolveCluster, type LookupResult } from "../db.js";
 import { findQuote } from "./quotes.js";
+import {
+  parseStatuteCites,
+  resolveStatute,
+  statuteLabel,
+  statuteTableExists,
+  type StatuteSource,
+} from "../statute.js";
 
 export const TREATMENT_LABELS: Array<{ bit: number; label: string }> = [
   { bit: 1, label: "overruled" },
@@ -55,6 +62,8 @@ export interface CitationCheck {
   cluster_id?: number;
   case_name?: string | null;
   inferred_treatment?: string[];
+  /** set when form === "statute": row id in the statutes table (G4) */
+  statute_id?: number;
 }
 
 export interface QuoteCheck {
@@ -271,6 +280,14 @@ export function analyzeCitationsAndQuotes(
 ): VerificationReport {
   // ---- citations ---------------------------------------------------------
   const citations: CitationCheck[] = [];
+  // Statutory cites (G4): eyecite does not carry them, so they are detected
+  // against the full-form pattern and resolved from the statutes table.
+  // When the G4 ETL has not run, statutory verification stays off and the
+  // eyecite-only behavior applies unchanged.
+  const hasStatutes = statuteTableExists(db);
+  const statuteHits = hasStatutes ? parseStatuteCites(text) : [];
+  const overlapsStatute = (start: number, end: number): boolean =>
+    statuteHits.some((s) => start < s.end && end > s.start);
   for (const c of extracted) {
     if (c.error) {
       // One bad draft must not fail a batch — but it must not pass
@@ -289,6 +306,9 @@ export function analyzeCitationsAndQuotes(
       });
       continue;
     }
+    // A span inside a full statutory cite is superseded by the statute
+    // check below — reporting both would double-fail the same reference.
+    if (overlapsStatute(c.start, c.end)) continue;
     // Spans ride ON the check object: parallel-array indexing against the
     // input would silently desync.
     if (c.type !== "full") {
@@ -354,6 +374,29 @@ export function analyzeCitationsAndQuotes(
     });
   }
 
+  // Statutory citations, resolved against the statutes table. A quoted
+  // statute is checked by the quote ladder below, attributed to this check.
+  for (const s of statuteHits) {
+    const row = resolveStatute(db, s.source, s.title, s.section);
+    const reporter = s.source === ("usc" as StatuteSource) ? "U.S.C." : "C.F.R.";
+    // A subsection pin ("§ 1983(a)") rides after the cite; like case pin
+    // pages it is annotated, not verified (v1).
+    const pinFollows = /^\s*\(/.test(text.slice(s.end));
+    citations.push({
+      citation_text: s.text,
+      corrected: s.text,
+      volume: s.title,
+      reporter,
+      page: s.section,
+      form: "statute",
+      cite_start: s.start,
+      cite_end: s.end,
+      status: row ? "verified" : "unresolved_citation",
+      pin_unverified: pinFollows,
+      ...(row ? { statute_id: row.id, case_name: `${statuteLabel(row)} — ${row.heading}` } : {}),
+    });
+  }
+
   // ---- quotes -------------------------------------------------------------
   const spans = extractQuotedSpans(text);
   const quotes: QuoteCheck[] = [];
@@ -362,14 +405,14 @@ export function analyzeCitationsAndQuotes(
     // claim (§5.3) and has no citation to attribute to.
     if (inSkippedRange(span.start, span.end, opts.skipQuoteRanges)) continue;
 
-    // attribution: nearest preceding full+verified citation, else nearest
-    // following one within 300 chars (leading-quote style).
+    // attribution: nearest preceding verified citation (case or statute),
+    // else nearest following one within 300 chars (leading-quote style).
     let target: CitationCheck | undefined;
     let idx = -1;
     for (let i = citations.length - 1; i >= 0; i--) {
       const c = citations[i];
       if (
-        c.form === "full" &&
+        (c.form === "full" || c.form === "statute") &&
         c.status === "verified" &&
         c.cite_end <= span.start
       ) {
@@ -382,7 +425,7 @@ export function analyzeCitationsAndQuotes(
       for (let i = 0; i < citations.length; i++) {
         const c = citations[i];
         if (
-          c.form === "full" &&
+          (c.form === "full" || c.form === "statute") &&
           c.status === "verified" &&
           c.cite_start >= span.end &&
           c.cite_start - span.end <= 300
@@ -394,7 +437,7 @@ export function analyzeCitationsAndQuotes(
       }
     }
 
-    if (!target || target.opinion_id == null) {
+    if (!target || (target.opinion_id == null && target.statute_id == null)) {
       quotes.push({
         quote: span.quote,
         start: span.start,
@@ -404,11 +447,19 @@ export function analyzeCitationsAndQuotes(
       continue;
     }
 
-    const row = db
-      .prepare("SELECT text FROM opinions WHERE id = ?")
-      .get(target.opinion_id) as { text: string } | undefined;
-    const opinionText = row?.text ?? "";
-    const m = findQuote(opinionText, span.quote);
+    let sourceText = "";
+    if (target.statute_id != null) {
+      const row = db
+        .prepare("SELECT text FROM statutes WHERE id = ?")
+        .get(target.statute_id) as { text: string } | undefined;
+      sourceText = row?.text ?? "";
+    } else {
+      const row = db
+        .prepare("SELECT text FROM opinions WHERE id = ?")
+        .get(target.opinion_id) as { text: string } | undefined;
+      sourceText = row?.text ?? "";
+    }
+    const m = findQuote(sourceText, span.quote);
     if (m.found) {
       quotes.push({
         quote: span.quote,
@@ -421,7 +472,11 @@ export function analyzeCitationsAndQuotes(
       });
       continue;
     }
-    const source = findTrueSource(db, span.quote, target.cluster_id ?? null);
+    // True-source probing is an opinion-text concern; a statute quote that
+    // does not match its section simply failed.
+    const source = target.statute_id != null
+      ? undefined
+      : findTrueSource(db, span.quote, target.cluster_id ?? null);
     quotes.push({
       quote: span.quote,
       start: span.start,

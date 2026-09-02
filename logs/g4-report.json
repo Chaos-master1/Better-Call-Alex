@@ -1,0 +1,50 @@
+{
+  "gate": "G4 — Statutes (eCFR + US Code) + deterministic calculators",
+  "verified": "2026-09-02",
+  "overall": "pass",
+  "conditions": [
+    "US Code live download is environment-conditional: uscode.house.gov is unreachable from the development network (connection reset). The OLRC release-point URL adapter and the usc-md parser are implemented and fixture-tested; loading a US Code title requires a network that reaches uscode.house.gov. The G4 spot-check itself (live eCFR API) passes unconditionally."
+  ],
+  "statutes_ingestion": {
+    "implementation": "etl/statutes.py (stdlib + defusedxml)",
+    "stages": ["ensure", "ecfr-title", "usc-title", "spot-check", "stats"],
+    "sources": {
+      "ecfr": {
+        "loaded_titles": ["37", "42"],
+        "as_of_date": "2026-08-31",
+        "sections_stored": 8621,
+        "fetch_time_seconds": {"title_37": 2.1, "title_42": 4.0}
+      },
+      "usc": {
+        "loaded_titles": [],
+        "note": "uscode.house.gov unreachable from this network; parser fixture-tested against the OLRC usc-md format"
+      }
+    },
+    "etl_tests": "etl/tests/test_statutes.py — 5/5 pass (parsers, DTD rejection, idempotent schema, FTS match, URL component validation)",
+    "safety": "host allow-list + resolved-IP public-range check + redirects refused; DTD/ENTITY rejected before parse; all SQL single-line literals with bound parameters"
+  },
+  "spot_check": {
+    "gate_requirement": "20 sections spot-checked against the live eCFR API",
+    "result": "20/20 matched",
+    "report": "logs/g4-statutes-spotcheck.json",
+    "method": "strided deterministic sample over loaded eCFR sections; each re-fetched from the live versioner API and compared on section number, heading, and first 120 chars of body text"
+  },
+  "calculators": {
+    "implementation": "app/lib/calc/dates.ts",
+    "functions": ["parseISO", "toISO", "addDays", "daysBetween", "federalHolidays", "nextBusinessDay", "isExpired", "solDeadline"],
+    "gate_requirement": "calculator unit tests covering leap years, weekend/holiday rolls, tolling",
+    "result": "36/36 unit tests pass, including: cross-year observed New Year's Day roll (2021-12-30 → 2022-01-03), Christmas/Juneteenth/Veterans-Day observed rolls, Feb 29 start clamped to month end, day-for-day tolling with fixed-point convergence, overlapping-window union, composition with nextBusinessDay for the filing date"
+  },
+  "verifier_integration": {
+    "implementation": "app/lib/statute.ts + statutory path in app/lib/verify/core.ts",
+    "behavior": "full-form statutory cites ('42 U.S.C. § 1983', '12 C.F.R. § 1026.36') resolve against the statutes table; quoted statute text is checked by the same quote ladder as case text; bare § forms remain unsupported_form; without the statutes table the verifier keeps pre-G4 behavior",
+    "tests": "app/lib/statute.test.ts — 9/9 pass (parser forms, subsection pin, case-cite non-match, resolution, verified/unresolved/fabricated quote, eyecite-span supersession, pre-G4 fallback)"
+  },
+  "regression_evidence": {
+    "typescript_tests": "60/60 pass",
+    "g2_fixture_gate": "9/9 fabrication catch (100%) — verifier core dedup did not regress the G2 contract",
+    "g3_offline_harness": "PASS",
+    "next_build": "passes with the merged tsconfig (app pages/routes now type-checked)",
+    "python_tests": "textclean 7/7, bridge 8/8 (venv), g0 gate checks pass on the live corpus"
+  }
+}
