@@ -435,13 +435,20 @@ def check_latency(runs: int = 2):
 
 def check_fts(which: str):
     """FTS5 integrity-check. Needs a write-capable handle because the command is
-    invoked as INSERT INTO fts(fts); the command itself performs no content writes."""
+    invoked as INSERT INTO fts(fts); the command itself performs no content writes.
+    `--which` comes from the command line, so the table is whitelisted and every
+    statement is a literal."""
+    if which not in ("opinions", "parentheticals"):
+        raise SystemExit(f"unsupported FTS table {which!r}; expected opinions or parentheticals")
     conn = sqlite3.connect(str(CORPUS_DB), timeout=120)
     conn.execute("PRAGMA cache_size=-262144")
-    table = f"{which}_fts"
+    table = which + "_fts"
     t0 = time.time()
     try:
-        conn.execute(f"INSERT INTO {table}({table}) VALUES ('integrity-check')")
+        if which == "opinions":
+            conn.execute("INSERT INTO opinions_fts(opinions_fts) VALUES ('integrity-check')")
+        else:
+            conn.execute("INSERT INTO parentheticals_fts(parentheticals_fts) VALUES ('integrity-check')")
         outcome = "ok"
         err = None
     except sqlite3.DatabaseError as e:

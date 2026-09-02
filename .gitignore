@@ -10,3 +10,10 @@ node_modules/
 .shards/
 next/
 app/.next/
+.mimosa/
+.zcode/
+
+# Local environment (see .env.example for the variables the app reads)
+.env
+.env.*
+!.env.example

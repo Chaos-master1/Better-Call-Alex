@@ -114,8 +114,15 @@ export default function Home() {
       <textarea
         value={facts}
         onChange={(e) => setFacts(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !pending && facts.trim()) {
+            e.preventDefault();
+            run();
+          }
+        }}
         rows={6}
         placeholder="Free-text fact pattern…"
+        aria-label="Fact pattern"
         style={{
           width: "100%",
           background: "#171717",
@@ -128,7 +135,7 @@ export default function Home() {
           lineHeight: 1.5,
         }}
       />
-      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button
           onClick={run}
           disabled={pending || !facts.trim()}
@@ -143,14 +150,20 @@ export default function Home() {
             fontWeight: 600,
           }}
         >
-          {pending ? "Running pipeline (≤60s)…" : "Run pipeline"}
+          {pending ? "Running pipeline (up to a few minutes)…" : "Run pipeline"}
         </button>
-        <span style={{ fontSize: 11, color: "#737373" }}>qwen3.5:9b → qwen3:14b (batched, ≤2 swaps) → verifier gate</span>
+        <span style={{ fontSize: 11, color: "#8a8a8a" }}>
+          qwen3.5:9b → qwen3:14b (batched, ≤2 swaps) → verifier gate · Ctrl/⌘+Enter to run
+        </span>
       </div>
       {err && (
-        <pre style={{ marginTop: 16, padding: 12, background: "#1f1010", color: "#fca5a5", border: "1px solid #7f1d1d", borderRadius: 6, fontSize: 12, overflow: "auto", whiteSpace: "pre-wrap" }}>{err}</pre>
+        <pre role="alert" style={{ marginTop: 16, padding: 12, background: "#1f1010", color: "#fca5a5", border: "1px solid #7f1d1d", borderRadius: 6, fontSize: 12, overflow: "auto", whiteSpace: "pre-wrap" }}>{err}</pre>
       )}
-      {pending && !out && <p style={{ color: "#a3a3a3", fontSize: 12, marginTop: 12 }}>Intake → researcher (BM25×authority) → analyst → adversary…</p>}
+      {pending && !out && (
+        <p aria-live="polite" style={{ color: "#8a8a8a", fontSize: 12, marginTop: 12 }}>
+          Intake → researcher (BM25×authority) → analyst → adversary… runs can take several minutes on cold model loads.
+        </p>
+      )}
       {out && <Result out={out} />}
     </main>
   );

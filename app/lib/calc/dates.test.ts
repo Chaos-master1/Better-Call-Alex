@@ -132,6 +132,34 @@ test("nextBusinessDay handles year-boundary weekends", () => {
   assert.equal(nextBusinessDay("2027-01-01"), "2027-01-04");
 });
 
+test("nextBusinessDay skips the cross-year observed New Year's Day", () => {
+  // Jan 1 2022 is a Saturday → observed Friday 2021-12-31 (5 U.S.C. § 6103(b)).
+  // Rolling from Thursday 2021-12-30 must NOT land on the closed 12-31:
+  // 12-31 (observed holiday) → 01-01 Sat → 01-02 Sun → Monday 01-03.
+  assert.equal(nextBusinessDay("2021-12-30"), "2022-01-03");
+  // The observed day must live in the year it FALLS in, not the holiday's year.
+  assert.ok(federalHolidays(2021).has("2021-12-31"));
+  assert.ok(!federalHolidays(2022).has("2021-12-31"));
+});
+
+test("nextBusinessDay runs the Christmas-observed weekend chain", () => {
+  // Dec 25 2021 is a Saturday → observed Friday 12-24. From Thursday 12-23:
+  // 12-24 (observed) → 12-25 Sat → 12-26 Sun → Monday 12-27.
+  assert.equal(nextBusinessDay("2021-12-23"), "2021-12-27");
+});
+
+test("nextBusinessDay skips Juneteenth observed on Friday", () => {
+  // Juneteenth 2021-06-19 is a Saturday → observed Friday 06-18.
+  // From Thursday 06-17: 06-18 (observed) → 06-19 Sat → 06-20 Sun → Mon 06-21.
+  assert.equal(nextBusinessDay("2021-06-17"), "2021-06-21");
+});
+
+test("nextBusinessDay skips Veterans Day observed on Monday", () => {
+  // Veterans Day 2018-11-11 is a Sunday → observed Monday 11-12.
+  // From Friday 11-09: 11-10 Sat → 11-11 Sun → 11-12 (observed) → Tue 11-13.
+  assert.equal(nextBusinessDay("2018-11-09"), "2018-11-13");
+});
+
 // ——— isExpired: SOL with optional tolling ———
 
 test("isExpired: before the SOL window → not expired", () => {

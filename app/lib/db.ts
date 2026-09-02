@@ -53,8 +53,8 @@ export function normalizeVolume(volume: string): string {
 }
 export function normalizePage(page: string): string {
   // keep only leading numeric portion if eyecite appends suffixes; fallback to raw
-  const digits = page.replace(/[^\d]/g, "");
-  if (digits) return normalizeCiteNum(digits);
+  const m = page.trim().match(/^\d+/);
+  if (m) return normalizeCiteNum(m[0]);
   return normalizeCiteNum(page);
 }
 

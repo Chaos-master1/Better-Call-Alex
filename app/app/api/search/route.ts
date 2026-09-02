@@ -8,11 +8,25 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const jurisdiction = searchParams.get("jurisdiction") ?? undefined;
-  const limit = Number(searchParams.get("limit") ?? "10");
+  // Clamp: `?limit=abc` must not become NaN (which would disable every
+  // early-exit in search() and return the whole candidate pool).
+  const limit = Math.min(
+    Math.max(1, Number.parseInt(searchParams.get("limit") ?? "10", 10) || 10),
+    50
+  );
   if (!q.trim()) {
     return NextResponse.json({ error: "q is required" }, { status: 400 });
   }
-  const db = openCorpus();
+  let db;
+  try {
+    db = openCorpus();
+  } catch (e) {
+    console.error("[api/search] corpus unavailable:", e);
+    return NextResponse.json(
+      { error: "corpus database unavailable — run the ETL (docs/data-pipeline.md)" },
+      { status: 503 }
+    );
+  }
   try {
     const t0 = performance.now();
     const hits = search(db, q, { jurisdiction, limit });

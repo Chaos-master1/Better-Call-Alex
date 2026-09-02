@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 import { openCorpus, resolveCluster, type LookupResult } from "./lib/db.js";
 import { search } from "./lib/retrieval/search.js";
 import { openApp } from "./lib/app_db.js";
@@ -102,7 +103,7 @@ async function main() {
           `INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`
         )
         .run(
-          `cli-${Date.now()}`,
+          `cli-${randomUUID()}`,
           title,
           facts
         ).lastInsertRowid

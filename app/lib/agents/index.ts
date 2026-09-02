@@ -71,7 +71,20 @@ export async function intakeAgent(facts: string): Promise<IntakeOutput> {
     maxTokens: 1500,
     jsonMode: true,
   });
-  return parseJson<IntakeOutput>(r.content, "intake");
+  const parsed = parseJson<IntakeOutput>(r.content, "intake");
+  // Shape gate: Ollama's format:"json" guarantees valid JSON, not the
+  // agreed schema. Coerce benign deviations here so a missing array
+  // becomes [] instead of a TypeError minutes later in the researcher or
+  // the drafter.
+  return {
+    jurisdiction: typeof parsed.jurisdiction === "string" ? parsed.jurisdiction : null,
+    parties: typeof parsed.parties === "object" && parsed.parties !== null ? parsed.parties : {},
+    claims: stringArray(parsed.claims),
+    facts: stringArray(parsed.facts),
+    requested_relief: typeof parsed.requested_relief === "string" ? parsed.requested_relief : null,
+    unknowns: stringArray(parsed.unknowns),
+    note: typeof parsed.note === "string" ? parsed.note : null,
+  };
 }
 
 // =====================================================================
@@ -124,11 +137,24 @@ export async function researcherAgent(
     jsonMode: true,
   });
   const parsed = parseJson<Omit<ResearcherOutput, "hits" | "top_picks">>(r.content, "researcher");
+  // Shape gate: a non-array or empty queries list cannot be repaired —
+  // without queries there is no retrieval, so fail here with the agent's
+  // name instead of returning a hollow research pass.
+  const queries = (Array.isArray(parsed.queries) ? parsed.queries : []).filter(
+    (q): q is ResearcherQuery =>
+      typeof q === "object" && q !== null && typeof (q as { q?: unknown }).q === "string" &&
+      (q as { q: string }).q.trim().length > 0
+  );
+  if (queries.length === 0) {
+    throw new Error(
+      `[researcher agent] model returned no usable queries. First 200 chars: ${r.content.slice(0, 200)}`
+    );
+  }
   // Run retrieval for each query. Hits aggregated, deduped by cluster_id.
   const allHits: SearchHit[] = [];
   const seen = new Set<number>();
   const top_picks: ResearcherOutput["top_picks"] = [];
-  for (const q of parsed.queries) {
+  for (const q of queries) {
     const hits = search(db, q.q, { limit: 8 });
     top_picks.push({ q: q.q, hit: hits[0] ?? null });
     for (const h of hits) {
@@ -138,7 +164,7 @@ export async function researcherAgent(
       allHits.push(h);
     }
   }
-  return { queries: parsed.queries, hits: allHits, top_picks };
+  return { queries, hits: allHits, top_picks };
 }
 
 // =====================================================================
@@ -233,7 +259,32 @@ export async function analystAgent(
     maxTokens: 4000,
     jsonMode: true,
   });
-  return parseJson<AnalystOutput>(r.content, "analyst");
+  const parsed = parseJson<AnalystOutput>(r.content, "analyst");
+  // Shape gate: run.ts spreads tagged_sentences right after this call — a
+  // missing array would throw "not iterable" AFTER the 14b model swap,
+  // wasting the whole run. Arrays are coerced; the IRAC fields must be
+  // real strings or the draft has nothing to verify.
+  const irac = typeof parsed.irac === "object" && parsed.irac !== null
+    ? parsed.irac
+    : ({} as AnalystOutput["irac"]);
+  for (const k of ["issue", "rule", "application", "conclusion"] as const) {
+    if (typeof irac[k] !== "string") {
+      throw new Error(
+        `[analyst agent] model JSON has no string irac.${k}. First 200 chars: ${r.content.slice(0, 200)}`
+      );
+    }
+  }
+  const tagged = validTaggedSentences(parsed.tagged_sentences);
+  if (tagged.length === 0) {
+    throw new Error(
+      `[analyst agent] model returned no tagged sentences. First 200 chars: ${r.content.slice(0, 200)}`
+    );
+  }
+  return {
+    irac,
+    element_checklist: Array.isArray(parsed.element_checklist) ? parsed.element_checklist : [],
+    tagged_sentences: tagged,
+  };
 }
 
 // =====================================================================
@@ -312,7 +363,14 @@ export async function adversaryAgent(
     jsonMode: true,
   });
   const parsed = parseJson<Omit<AdversaryOutput, "counter_authority">>(r.content, "adversary");
-  return { ...parsed, counter_authority: counterHits };
+  // Shape gate: the adversary may legitimately come back thin (0 hits is a
+  // documented mode) — coerce deviations, never throw.
+  return {
+    counter_argument: typeof parsed.counter_argument === "string" ? parsed.counter_argument : "",
+    counter_authority: counterHits,
+    tagged_sentences: validTaggedSentences(parsed.tagged_sentences),
+    treatment_caveats: stringArray(parsed.treatment_caveats),
+  };
 }
 
 async function counterQueryFrom(
@@ -360,4 +418,39 @@ function parseJson<T>(raw: string, tag: string): T {
       `[${tag} agent] model returned non-JSON. First 200 chars: ${raw.slice(0, 200)}`
     );
   }
+}
+
+interface AgentTaggedSentence {
+  tag: "RECORD" | "LAW" | "INFERRED";
+  text: string;
+  pin_cite?: string;
+}
+
+/** Strings out of a model-returned field; non-arrays and non-strings are
+ *  dropped — callers treat [] as "agent returned nothing usable". */
+function stringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((s): s is string => typeof s === "string");
+}
+
+/** §5.3-tagged sentences only: an untagged or text-less entry would either
+ *  trip the render gate or die downstream, so it never enters the draft. */
+function validTaggedSentences(v: unknown): AgentTaggedSentence[] {
+  if (!Array.isArray(v)) return [];
+  const out: AgentTaggedSentence[] = [];
+  for (const s of v) {
+    if (typeof s !== "object" || s === null) continue;
+    const t = s as Record<string, unknown>;
+    if (
+      (t.tag === "RECORD" || t.tag === "LAW" || t.tag === "INFERRED") &&
+      typeof t.text === "string"
+    ) {
+      out.push({
+        tag: t.tag,
+        text: t.text,
+        ...(typeof t.pin_cite === "string" ? { pin_cite: t.pin_cite } : {}),
+      });
+    }
+  }
+  return out;
 }

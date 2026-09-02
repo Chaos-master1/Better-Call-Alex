@@ -64,7 +64,12 @@ function getClient(): Ollama {
     // (20+ s) + JSON-mode parse + a 32k context the first call can push
     // 120 s on a slow disk. Set a generous ceiling.
     fetch: (input, init) =>
-      fetch(input, { ...init, signal: AbortSignal.timeout(10 * 60_000) }),
+      fetch(input, {
+        ...init,
+        // Caller-provided signals (e.g. an aborted request) must win; the
+        // 10-minute ceiling applies only when none was given.
+        signal: init?.signal ?? AbortSignal.timeout(10 * 60_000),
+      }),
   });
   return client;
 }
@@ -82,7 +87,12 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): 
     } catch (e: any) {
       last = e;
       const msg = String(e?.message ?? e);
-      const transient = /fetch failed|ECONNREFUSED|timeout|UND_ERR|aborted/i.test(msg);
+      const name = String(e?.name ?? "");
+      // Abort/timeout are terminal: a deliberate cancel or the hard fetch
+      // ceiling must never be retried — the retry loop can otherwise burn
+      // ~30 minutes inside a maxDuration-bounded route.
+      if (/abort|timeout/i.test(name) || /abort/i.test(msg)) throw e;
+      const transient = /fetch failed|ECONNREFUSED|UND_ERR|timeout|socket hang up/i.test(msg);
       if (!transient || i === attempts - 1) throw e;
       const backoff = 1500 * (i + 1) + Math.random() * 500;
       console.warn(`[llm] ${label} transient (${msg.slice(0,120)}) — retry ${i + 1}/${attempts} in ${Math.round(backoff)}ms`);
@@ -90,6 +100,29 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): 
     }
   }
   throw last;
+}
+
+/**
+ * The context-window assert the module header promises. Ollama silently
+ * truncates prompts that exceed num_ctx — the exact failure mode that
+ * poisoned the previous build (ctx=2048, nobody noticed). The env check
+ * cannot catch a too-big payload at runtime, so this reads the measured
+ * prompt_eval_count: if the prompt plus the requested response budget does
+ * not fit the window, output is corrupted and the run must stop now, not
+ * minutes later with garbage.
+ */
+function assertNoTruncation(
+  promptTokens: number,
+  maxTokens: number,
+  label: string
+): void {
+  if (promptTokens <= 0) return; // count unavailable (mock/old daemon)
+  if (promptTokens + maxTokens <= REQUIRED_CTX) return;
+  fail(
+    `${label}: prompt filled ${promptTokens} ctx tokens; + ${maxTokens} ` +
+      `response budget exceeds the ${REQUIRED_CTX} window — Ollama would ` +
+      `silently truncate. Shrink the agent payload (fewer/shorter passages).`
+  );
 }
 
 async function verifyModel(model: string): Promise<void> {
@@ -115,10 +148,15 @@ async function verifyModel(model: string): Promise<void> {
 export async function verifyEnvironment(): Promise<void> {
   if (verified) return;
 
-  // KV cache type: must be set, not just present. Set the env if missing.
-  // We do not *override* a user-set value — only set if absent.
+  // KV cache type: the daemon read its environment when it started —
+  // setting the variable on THIS process cannot affect it. Warn so the
+  // operator exports it before `ollama serve`.
   if (!process.env.OLLAMA_KV_CACHE_TYPE) {
-    process.env.OLLAMA_KV_CACHE_TYPE = KV_CACHE_TYPE;
+    console.warn(
+      `[llm] OLLAMA_KV_CACHE_TYPE is not set in the daemon's environment. ` +
+        `Export ${KV_CACHE_TYPE} before starting Ollama — the canonical ` +
+        `setting for the 12 GB VRAM budget.`
+    );
   } else if (
     process.env.OLLAMA_KV_CACHE_TYPE !== "q8_0" &&
     process.env.OLLAMA_KV_CACHE_TYPE !== "q8"
@@ -185,6 +223,7 @@ export async function generate(
     `generate(${activeModel})`
   );
   const ms = performance.now() - t0;
+  assertNoTruncation(res.prompt_eval_count ?? 0, opts.maxTokens ?? 2048, `generate(${activeModel})`);
   return {
     model: activeModel,
     content: res.response ?? "",
@@ -241,6 +280,7 @@ export async function chat(
     `chat(${activeModel})`
   );
   const ms = performance.now() - t0;
+  assertNoTruncation(res.prompt_eval_count ?? 0, opts.maxTokens ?? 2048, `chat(${activeModel})`);
   return {
     model: activeModel,
     content: res.message?.content ?? "",

@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts TEXT NOT NULL DEFAULT (datetime('now')),
   kind TEXT NOT NULL,
-  payload TEXT NOT NULL
+  payload TEXT NOT NULL,
+  case_id INTEGER
 );
 
 -- §5.6: audit_log is append-only, enforced by triggers, not by convention.
@@ -102,18 +103,46 @@ export function openApp(): Database.Database {
   db.exec(SCHEMA);
   db.pragma(`journal_mode = WAL`);
   db.pragma(`foreign_keys = ON`);
+  migrate(db);
+  recoverStaleRuns(db);
   return db;
 }
 
-/** Append a row to audit_log. The only legal way to write to it. */
+/** Column additions that CREATE TABLE IF NOT EXISTS cannot deliver on an
+ *  existing database (SQLite has no ADD COLUMN IF NOT EXISTS). Every
+ *  statement here is a compile-time constant — nothing user-derived is
+ *  ever concatenated into SQL. */
+function migrate(db: Database.Database): void {
+  const cols = db.pragma("table_info(audit_log)") as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "case_id")) {
+    db.exec("ALTER TABLE audit_log ADD COLUMN case_id INTEGER");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_case ON audit_log(case_id)");
+}
+
+/** A crashed process leaves runs stuck at 'running' forever — finalizeRun
+ *  never fires. The pipeline is bounded well under an hour even with cold
+ *  model loads, so anything still 'running' after an hour is dead. */
+function recoverStaleRuns(db: Database.Database): void {
+  db.prepare(
+    "UPDATE runs SET status = 'failed', finished_at = datetime('now')" +
+      " WHERE status = 'running'" +
+      " AND datetime(started_at, '+1 hour') < datetime('now')"
+  ).run();
+}
+
+/** Append a row to audit_log. The only legal way to write to it.
+ *  `caseId` scopes the row to a case so the UI shows per-case steps
+ *  (audit_log has always been append-only; the column is additive). */
 export function audit(
   db: Database.Database,
   kind: string,
-  payload: unknown
+  payload: unknown,
+  caseId?: number
 ): void {
   db.prepare(
-    `INSERT INTO audit_log (kind, payload) VALUES (?, ?)`
-  ).run(kind, JSON.stringify(payload));
+    "INSERT INTO audit_log (kind, payload, case_id) VALUES (?, ?, ?)"
+  ).run(kind, JSON.stringify(payload) ?? null, caseId ?? null);
 }
 
 export type AppDb = Database.Database;

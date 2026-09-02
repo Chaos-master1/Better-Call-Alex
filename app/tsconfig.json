@@ -1,14 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": [
-      "ES2023"
-    ],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "types": [
-      "node"
-    ],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -27,13 +23,10 @@
   "include": [
     "cli.ts",
     "lib/**/*.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
-  "exclude": [
-    "app/**",
-    "components/**",
-    "next.config.mjs",
-    "next-env.d.ts",
-    ".next/**"
-  ]
+  "exclude": ["node_modules", ".next/**"]
 }

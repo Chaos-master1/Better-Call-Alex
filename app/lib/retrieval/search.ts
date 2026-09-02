@@ -285,8 +285,11 @@ export function extractPassage(
   // Stored text is WS-collapsed to single spaces by the ETL (textclean.WS_RE),
   // but defensively normalise here so phrase tokens like "qualified immunity"
   // (joined by a single space) never miss because hay still contains \n or
-  // double spaces on legacy rows (P1-7).
-  const hay = text.toLowerCase().replace(/\s+/g, " ");
+  // double spaces on legacy rows (P1-7). Offsets are computed on the
+  // collapsed string, so the slice MUST come from the same string — slicing
+  // the raw text with collapsed offsets shifts the window left on legacy rows.
+  const collapsed = text.replace(/\s+/g, " ");
+  const hay = collapsed.toLowerCase();
   let best = -1;
   let bestCount = -1;
   const positions: number[] = [];
@@ -311,7 +314,7 @@ export function extractPassage(
   }
   const start =
     best === -1 ? 0 : Math.max(0, best - Math.floor(len / 4));
-  return { text: text.slice(start, start + len).trim(), start, end: start + len };
+  return { text: collapsed.slice(start, start + len).trim(), start, end: start + len };
 }
 
 export function search(
@@ -319,7 +322,10 @@ export function search(
   query: string,
   opts: SearchOptions = {}
 ): SearchHit[] {
-  const limit = opts.limit ?? 10;
+  // Clamp: a NaN/negative/zero limit would disable every early-exit below
+  // (comparisons against NaN are always false), scan the full 20k ladder,
+  // and then slice to nothing.
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 10) || 10), 100);
   const tokens = tokenize(query);
   const expr = matchExpression(tokens);
   if (!expr) return [];
@@ -344,7 +350,10 @@ export function search(
           ORDER BY bm25 LIMIT ?`
       )
       .all(expr, poolSize) as Array<{ id: number; bm25: number }>;
-    if (ranked.length === 0) return [];
+    // Zero opinions at this rung: a bigger pool cannot conjure hits for the
+    // same expression — but the parenthetical-recall seeds below may still
+    // rescue the query. Fall through; never return empty from here.
+    if (ranked.length === 0) break;
     const meta = fetchPool(db, ranked.map((r) => r.id));
     candidates = [];
     for (const r of ranked) {
@@ -386,14 +395,14 @@ export function search(
     top.push(s);
     if (top.length >= limit) break;
   }
-  if (top.length === 0) return [];
-
   // Parenthetical-recall seeds (§3 step 3): gated on doctrine queries —
   // a phrase token present means the query names legal doctrine, which is
   // exactly where vocabulary drift hides landmarks from conjunctive match.
+  // With zero ranked candidates the gate is bypassed: any parenthetical
+  // match beats an empty result, and there is no precision to protect.
   const hasPhrase = tokens.some((t) => t.includes(" "));
   const seeds: Array<{ row: PoolRow; pb: number; final: number }> = [];
-  if (hasPhrase && boosts.size > 0) {
+  if (boosts.size > 0 && (hasPhrase || top.length === 0)) {
     const claimed = new Set(seenClusters);
     const descIds = [...boosts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0] - b[0])

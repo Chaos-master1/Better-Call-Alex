@@ -119,3 +119,37 @@ test("resolveCluster resolves Roe and rejects fabrications", { skip: !HAS_DB }, 
     db.close();
   }
 });
+
+// --------------------------------------------------- [RECORD] quote ranges
+
+test(
+  "[RECORD] quotes are the client's own facts — they never fail the draft",
+  { skip: !HAS_DB },
+  async () => {
+    const { verifyTaggedSentencesAsync } = await import("../render.js");
+    const { verifyText } = await import("./verify.js");
+    const db = openCorpus();
+    try {
+      const sentences = [
+        {
+          tag: "RECORD" as const,
+          text: 'The client told the intake clerk "please help me file before june" on the call.',
+        },
+        { tag: "INFERRED" as const, text: "The client appears concerned about timing." },
+      ];
+      const out = await verifyTaggedSentencesAsync(db, sentences);
+      // The record quote is never checked, so the report carries no quote
+      // checks and the draft passes.
+      assert.equal(out.report.quotes.length, 0);
+      assert.equal(out.overall, "pass");
+
+      // Control: the identical draft text WITHOUT the record skip fails —
+      // the quote is unattributed. Proves the skip is what changed.
+      const raw = verifyText(db, out.draft);
+      assert.equal(raw.overall, "fail");
+      assert.ok(raw.quotes.some((q) => q.status === "unattributed"));
+    } finally {
+      db.close();
+    }
+  }
+);

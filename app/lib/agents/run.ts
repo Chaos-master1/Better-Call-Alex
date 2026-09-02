@@ -64,31 +64,34 @@ export async function runCase(
   _runQueue = myTurn;
   await prev;
   const t0 = performance.now();
-  const corpus = openCorpus();
   // One shared transaction context would be nicer; better-sqlite3 is sync,
-  // so each call gets its own handle and we close at the end.
+  // so each call gets its own handle and we close at the end. openCorpus()
+  // must stay inside the try: a throw before the finally would leak the
+  // single-flight slot and deadlock every subsequent run.
+  let corpus: Database.Database | null = null;
   try {
+    corpus = openCorpus();
     // 1. intake (qwen3.5:9b)
     await useModel(RESIDENT_MODEL);
     const intake = await intakeAgent(facts);
     persistIntake(appDb, caseId, intake);
-    audit(appDb, "agent.intake", { caseId });
+    audit(appDb, "agent.intake", { caseId }, caseId);
 
     // 2. researcher (qwen3.5:9b, on resident model)
     const research = await researcherAgent(intake, corpus);
     persistResearch(appDb, caseId, research);
-    audit(appDb, "agent.researcher", { caseId, hits: research.hits.length });
+    audit(appDb, "agent.researcher", { caseId, hits: research.hits.length }, caseId);
 
     // 3. swap to 14b for the analyst + adversary pass
     await useModel(ANALYST_MODEL);
 
     const analyst = await analystAgent(intake, research);
     persistAnalyst(appDb, caseId, analyst);
-    audit(appDb, "agent.analyst", { caseId });
+    audit(appDb, "agent.analyst", { caseId }, caseId);
 
     const adversary = await adversaryAgent(intake, research, analyst, corpus);
     persistAdversary(appDb, caseId, adversary);
-    audit(appDb, "agent.adversary", { caseId });
+    audit(appDb, "agent.adversary", { caseId }, caseId);
 
     // 4. verifier gate over the combined tagged sentences (async — does not block loop)
     const combined: TaggedSentence[] = [
@@ -106,7 +109,7 @@ export async function runCase(
       overall: draft.overall,
       sentences: draft.sentences.length,
       verified: draft.sentences.filter((s) => s.verified).length,
-    });
+    }, caseId);
 
     // 5. drafter template (pure, no LLM) — banner applied in code per §11
     const drafted = draftDocument(draft, intake, research, analyst, adversary);
@@ -114,7 +117,7 @@ export async function runCase(
     appDb
       .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
       .run(JSON.stringify(drafted), caseId);
-    audit(appDb, "drafter.render", { caseId, banner: drafted.banner, overall: drafted.verification.overall });
+    audit(appDb, "drafter.render", { caseId, banner: drafted.banner, overall: drafted.verification.overall }, caseId);
 
     // 6. swap back to 9b so subsequent runs start on the resident model
     await useModel(RESIDENT_MODEL);
@@ -132,12 +135,15 @@ export async function runCase(
       ms: performance.now() - t0,
     };
   } catch (err) {
-    audit(appDb, "agent.error", { caseId, err: String(err) });
+    audit(appDb, "agent.error", { caseId, err: String(err) }, caseId);
     finalizeRun(appDb, caseId, "failed");
     throw err;
   } finally {
-    corpus.close();
-    release();
+    try {
+      corpus?.close();
+    } finally {
+      release();
+    }
   }
 }
 
@@ -188,7 +194,7 @@ function persistIntake(
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(intake), "qwen3.5:9b");
+    .run(caseId, JSON.stringify(intake), RESIDENT_MODEL);
   appDb
     .prepare(
       `UPDATE runs SET intake_json = ? WHERE case_id = ? AND status = 'running'`
@@ -217,7 +223,7 @@ function persistAnalyst(
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(analyst), "qwen3:14b");
+    .run(caseId, JSON.stringify(analyst), ANALYST_MODEL);
   appDb
     .prepare(
       `UPDATE runs SET analyst_json = ? WHERE case_id = ? AND status = 'running'`
@@ -234,7 +240,7 @@ function persistAdversary(
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(adversary), "qwen3:14b");
+    .run(caseId, JSON.stringify(adversary), ANALYST_MODEL);
   appDb
     .prepare(
       `UPDATE runs SET adversary_json = ? WHERE case_id = ? AND status = 'running'`

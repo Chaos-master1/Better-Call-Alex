@@ -79,15 +79,15 @@ class TestG0(unittest.TestCase):
         self.assertLessEqual(n, hi, f"opinions={n:,} above ceiling {hi:,.0f}")
 
     def test_supporting_tables_populated(self):
-        checks = {
-            "cites": 100_000_000,
-            "citation_strings": 1_000_000,
-            "courts": 500,
-            "judges": 10_000,
-        }
-        for table, floor in checks.items():
-            n = self.conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-            self.assertGreater(n, floor, f"{table}={n:,} below floor {floor:,}")
+        # Each statement is a literal; no identifiers are ever interpolated.
+        n = self.conn.execute("SELECT count(*) FROM cites").fetchone()[0]
+        self.assertGreater(n, 100_000_000, f"cites={n:,} below floor 100,000,000")
+        n = self.conn.execute("SELECT count(*) FROM citation_strings").fetchone()[0]
+        self.assertGreater(n, 1_000_000, f"citation_strings={n:,} below floor 1,000,000")
+        n = self.conn.execute("SELECT count(*) FROM courts").fetchone()[0]
+        self.assertGreater(n, 500, f"courts={n:,} below floor 500")
+        n = self.conn.execute("SELECT count(*) FROM judges").fetchone()[0]
+        self.assertGreater(n, 10_000, f"judges={n:,} below floor 10,000")
         n = self.conn.execute("SELECT count(*) FROM parentheticals").fetchone()[0]
         self.assertGreater(n, 100_000)
 

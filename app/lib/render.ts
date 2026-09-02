@@ -6,7 +6,8 @@
  *
  *   1. Joins the agent sentences into a single draft text, with tags
  *      preserved as a sidecar array.
- *   2. Runs the G2 Verifier (verifyText) on the draft.
+ *   2. Runs the G2 Verifier on the draft (async bridge for the server,
+ *      sync bridge for the CLI/evals — both share one analysis core).
  *   3. Cross-references: each sentence that the verifier flags as
  *      `unresolved_citation` / `quote_not_found` / `quote_wrong_case` /
  *      `unattributed` is marked `verified: false`.
@@ -15,11 +16,19 @@
  *      verification are rendered struck-through; the user must see them
  *      (§3, §11 — never silently dropped).
  *
+ * [RECORD] sentences hold the client's own facts (§5.3). Quotes inside
+ * them are the user's words — a contract line, a text message — not
+ * corpus claims, so their char ranges are passed to the verifier as
+ * `skipQuoteRanges`: they are not checked, and quoting the client can
+ * never fail an otherwise-clean draft. Citations inside [RECORD]
+ * sentences are still resolved.
+ *
  * The claim-tag gate (§5.3) is enforced HERE, not by prompt. If the
  * analyst returns a sentence that is not tagged, the gate rejects it.
  */
 import { verifyText, type VerificationReport } from "./verify/verify.js";
 import { verifyTextAsync } from "./verify/verify_async.js";
+import type { AnalyzeOptions } from "./verify/core.js";
 import type Database from "better-sqlite3";
 
 export type ClaimTag = "RECORD" | "LAW" | "INFERRED";
@@ -54,81 +63,49 @@ export interface RenderedDraft {
   overall: "pass" | "fail";
 }
 
-/** Async variant — does not block the event loop (preferred for the server). */
-export async function verifyTaggedSentencesAsync(
-  db: Database.Database,
-  sentences: TaggedSentence[]
-): Promise<RenderedDraft> {
+/** §5.3 gate: every sentence MUST be tagged. Untagged = reject. */
+function gateTags(sentences: TaggedSentence[]): void {
   for (const [i, s] of sentences.entries()) {
     if (!s.tag) throw new Error(`[verify] sentence ${i} is untagged (CLAUDE.md §5.3)`);
   }
-  const parts = sentences.map((s) => {
-    const cite = s.pin_cite ? ` (${s.pin_cite})` : "";
-    return `[${s.tag}] ${s.text}${cite}`;
-  });
-  const draft = parts.join(" ");
-  const report = await verifyTextAsync(db, draft);
+}
+
+/** Build the draft text. The pin cite rides as a parenthetical so eyecite
+ *  can extract it; the renderer strips it back out. */
+function buildDraft(sentences: TaggedSentence[]): string {
+  return sentences
+    .map((s) => `[${s.tag}] ${s.text}${s.pin_cite ? ` (${s.pin_cite})` : ""}`)
+    .join(" ");
+}
+
+/**
+ * Char ranges of the [RECORD] sentences in the draft, for the verifier's
+ * `skipQuoteRanges`: quotes inside them are the client's own facts, not
+ * corpus claims (§5.3).
+ */
+function recordCharRanges(
+  draft: string,
+  sentences: TaggedSentence[]
+): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const offsets = sentenceCharRanges(draft, sentences);
+  for (const [i, s] of sentences.entries()) {
+    if (s.tag === "RECORD") ranges.push(offsets[i]);
+  }
+  return ranges;
+}
+
+/** Cross-reference the verifier's report with the per-sentence char ranges. */
+function crossReference(
+  draft: string,
+  sentences: TaggedSentence[],
+  report: VerificationReport
+): RenderedDraft {
   const offsets = sentenceCharRanges(draft, sentences);
   const bySentence: VerifiedSentence[] = sentences.map((s, i) => {
     const [a, b] = offsets[i];
     const cits = report.citations.filter((c) => c.cite_start >= a && c.cite_end <= b);
     const quotes = report.quotes.filter((q) => q.start >= a && q.end <= b);
-    const detail: string[] = [];
-    let verified = true;
-    for (const c of cits) {
-      detail.push(`cite '${c.citation_text}' → ${c.status}`);
-      if (c.status !== "verified") verified = false;
-    }
-    for (const q of quotes) {
-      detail.push(`quote '${q.quote.slice(0, 30)}…' → ${q.status}`);
-      if (q.status !== "verified") verified = false;
-    }
-    if (s.tag === "LAW" && !s.pin_cite) {
-      detail.push("LAW sentence without pin cite → unverified");
-      verified = false;
-    }
-    return { index: i, tag: s.tag, text: s.text, pin_cite: s.pin_cite, verified, detail, inferred: s.tag === "INFERRED" };
-  });
-  const overall: "pass" | "fail" = report.overall === "pass" && bySentence.every((s) => s.verified) ? "pass" : "fail";
-  return { draft, sentences: bySentence, report, overall };
-}
-
-/**
- * Stitch `tagged_sentences` into a single draft text and run the G2
- * Verifier over it. Returns the per-sentence render array with the
- * verifier verdict for each.
- */
-export function verifyTaggedSentences(
-  db: Database.Database,
-  sentences: TaggedSentence[]
-): RenderedDraft {
-  // §5.3 gate: every sentence MUST be tagged. Untagged = reject.
-  for (const [i, s] of sentences.entries()) {
-    if (!s.tag) {
-      throw new Error(`[verify] sentence ${i} is untagged (CLAUDE.md §5.3)`);
-    }
-  }
-  // Build the draft text. We include the pin cite as a parenthetical so
-  // eyecite can extract it; the renderer strips it back out.
-  const parts = sentences.map((s) => {
-    const cite = s.pin_cite ? ` (${s.pin_cite})` : "";
-    return `[${s.tag}] ${s.text}${cite}`;
-  });
-  const draft = parts.join(" ");
-  const report = verifyText(db, draft);
-
-  // Cross-reference: walk each sentence in the draft; find the citations
-  // whose char range lies inside the sentence's char range; mark
-  // verified = (every such citation status === 'verified').
-  const offsets = sentenceCharRanges(draft, sentences);
-  const bySentence: VerifiedSentence[] = sentences.map((s, i) => {
-    const [a, b] = offsets[i];
-    const cits = report.citations.filter(
-      (c) => c.cite_start >= a && c.cite_end <= b
-    );
-    const quotes = report.quotes.filter(
-      (q) => q.start >= a && q.end <= b
-    );
     const detail: string[] = [];
     let verified = true;
     for (const c of cits) {
@@ -154,13 +131,41 @@ export function verifyTaggedSentences(
       inferred: s.tag === "INFERRED",
     };
   });
-
   const overall: "pass" | "fail" =
     report.overall === "pass" && bySentence.every((s) => s.verified)
       ? "pass"
       : "fail";
-
   return { draft, sentences: bySentence, report, overall };
+}
+
+/**
+ * Async variant — does not block the event loop (preferred for the server).
+ */
+export async function verifyTaggedSentencesAsync(
+  db: Database.Database,
+  sentences: TaggedSentence[]
+): Promise<RenderedDraft> {
+  gateTags(sentences);
+  const draft = buildDraft(sentences);
+  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, sentences) };
+  const report = await verifyTextAsync(db, draft, opts);
+  return crossReference(draft, sentences, report);
+}
+
+/**
+ * Stitch `tagged_sentences` into a single draft text and run the G2
+ * Verifier over it (sync bridge). Returns the per-sentence render array
+ * with the verifier verdict for each.
+ */
+export function verifyTaggedSentences(
+  db: Database.Database,
+  sentences: TaggedSentence[]
+): RenderedDraft {
+  gateTags(sentences);
+  const draft = buildDraft(sentences);
+  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, sentences) };
+  const report = verifyText(db, draft, opts);
+  return crossReference(draft, sentences, report);
 }
 
 /**

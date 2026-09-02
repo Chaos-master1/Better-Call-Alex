@@ -11,7 +11,16 @@ export async function GET(req: Request) {
   if (!parsed) {
     return NextResponse.json({ error: "could not parse citation" }, { status: 400 });
   }
-  const db = openCorpus();
+  let db;
+  try {
+    db = openCorpus();
+  } catch (e) {
+    console.error("[api/lookup] corpus unavailable:", e);
+    return NextResponse.json(
+      { error: "corpus database unavailable — run the ETL (docs/data-pipeline.md)" },
+      { status: 503 }
+    );
+  }
   try {
     const result = resolveCluster(db, parsed.volume, parsed.reporter, parsed.page);
     if (!result) {

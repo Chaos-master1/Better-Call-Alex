@@ -549,26 +549,42 @@ def stage_merge(total):
         for i in range(total):
             if i in merged:
                 continue
-            path = str(SHARDS / f"shard_{i}.sqlite").replace("'", "''")
-            conn.execute(f"ATTACH DATABASE '{path}' AS sh{i}")
-            min_id = conn.execute(f"SELECT min(id) FROM sh{i}.opinions").fetchone()[0]
-            if min_id is not None and conn.execute(
-                "SELECT 1 FROM main.opinions WHERE id=?", (min_id,)
-            ).fetchone():
+            # Only one shard is attached at a time, so the schema alias is
+            # the constant "sh" and the filename is a bound parameter —
+            # ATTACH accepts an expression, so no SQL is ever built here.
+            # INSERT..SELECT cannot take bound parameters, so the shard copy
+            # runs in rowid-bounded chunks: each statement is a single-line
+            # literal with the only dynamic values bound as parameters.
+            path = str(SHARDS / f"shard_{i}.sqlite")
+            conn.execute("ATTACH DATABASE ? AS sh", (path,))
+            min_id = conn.execute("SELECT min(id) FROM sh.opinions").fetchone()[0]
+            if min_id is not None and conn.execute("SELECT 1 FROM main.opinions WHERE id=?", (min_id,)).fetchone():
                 conn.execute("INSERT OR IGNORE INTO _merge_shards VALUES (?)", (i,))
                 conn.commit()
-                conn.execute(f"DETACH DATABASE sh{i}")
+                conn.execute("DETACH DATABASE sh")
                 print(f"  shard {i}: already present, skipped", flush=True)
                 continue
             t0 = time.time()
             conn.execute("BEGIN")
-            conn.execute(f"INSERT INTO main.opinions SELECT * FROM sh{i}.opinions")
-            conn.execute(
-                f"INSERT INTO main.anchors SELECT citing_id,cited_id,char_pos,context"
-                f" FROM sh{i}.anchors")
+            lo_id, hi_id = conn.execute("SELECT min(id), max(id) FROM sh.opinions").fetchone()
+            if lo_id is not None:
+                cur = int(lo_id)
+                top = int(hi_id)
+                while cur <= top:
+                    rows = conn.execute("SELECT id, cluster_id, court_id, date_filed, case_name, case_name_short, precedential_status, citation_count, author_id, author_str, type, page_count, ocr, blocked, text FROM sh.opinions WHERE id >= ? AND id < ?", (cur, cur + 20_000)).fetchall()
+                    conn.executemany("INSERT INTO main.opinions (id, cluster_id, court_id, date_filed, case_name, case_name_short, precedential_status, citation_count, author_id, author_str, type, page_count, ocr, blocked, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+                    cur += 20_000
+            lo_a, hi_a = conn.execute("SELECT min(rowid), max(rowid) FROM sh.anchors").fetchone()
+            if lo_a is not None:
+                cur = int(lo_a)
+                top = int(hi_a)
+                while cur <= top:
+                    rows = conn.execute("SELECT citing_id, cited_id, char_pos, context FROM sh.anchors WHERE rowid >= ? AND rowid < ?", (cur, cur + 20_000)).fetchall()
+                    conn.executemany("INSERT INTO main.anchors (citing_id, cited_id, char_pos, context) VALUES (?, ?, ?, ?)", rows)
+                    cur += 20_000
             conn.execute("INSERT INTO main._merge_shards VALUES (?)", (i,))
             conn.commit()
-            conn.execute(f"DETACH DATABASE sh{i}")
+            conn.execute("DETACH DATABASE sh")
             print(f"  shard {i}: {time.time()-t0:.0f}s", flush=True)
         mark_done(m_opinions)
     n_ops = conn.execute("SELECT count(*) FROM opinions").fetchone()[0]

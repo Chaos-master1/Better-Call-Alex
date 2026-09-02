@@ -33,14 +33,20 @@ export function daysBetween(aISO: string, bISO: string): number | null {
   if (!a || !b) return null;
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
-// NOTE: signed on purpose — callers compute "days until deadline" as
-// daysBetween(deadline, today) and want negative to mean "past due".
+// NOTE: signed on purpose (b - a) — "days until deadline" is
+// daysBetween(today, deadline), which goes negative once the deadline
+// has passed.
 
-/** US federal holidays for a year, as ISO date strings (the actual day, plus the
- *  observed day when a fixed-date holiday lands on a weekend: Saturday → Friday
- *  before, Sunday → Monday after — 5 U.S.C. § 6103(b)). Computed, not stored:
- *  the rules are arithmetic (nth-weekday / last-weekday / fixed), so no data
- *  source and no staleness. Juneteenth included from 2021 onward. */
+/** US federal holidays for a year, as ISO date strings: the set of days
+ *  federal offices are closed during that calendar year — each actual day,
+ *  plus the observed day when a fixed-date holiday lands on a weekend:
+ *  Saturday → Friday before, Sunday → Monday after (5 U.S.C. § 6103(b)).
+ *  The observed day lives in the year it FALLS in, not the year of the
+ *  holiday: New Year's Day of year+1 on a Saturday is observed Friday,
+ *  Dec 31 of `year`, and closure checks consult only the date's own year's
+ *  set. Computed, not stored: the rules are arithmetic (nth-weekday /
+ *  last-weekday / fixed), so no data source and no staleness. Juneteenth
+ *  included from 2021 onward. */
 export function federalHolidays(year: number): Set<string> {
   const nthWeekday = (month: number, weekday: number, n: number) => {
     const d = new Date(Date.UTC(year, month, 1));
@@ -75,13 +81,22 @@ export function federalHolidays(year: number): Set<string> {
     const dow = d.getUTCDay();
     out.add(toISO(d));
     if (dow === 6) {
-      d.setUTCDate(d.getUTCDate() - 1);
-      out.add(toISO(d));
+      const obs = new Date(d);
+      obs.setUTCDate(obs.getUTCDate() - 1);
+      // New Year's observed on Friday lands in the previous calendar year;
+      // that year's set owns it (added by the year+1 rule below).
+      if (obs.getUTCFullYear() === year) out.add(toISO(obs));
     } else if (dow === 0) {
-      d.setUTCDate(d.getUTCDate() + 1);
-      out.add(toISO(d));
+      const obs = new Date(d);
+      obs.setUTCDate(obs.getUTCDate() + 1);
+      out.add(toISO(obs));
     }
   }
+  // New Year's Day of year+1 on a Saturday → observed Friday, Dec 31 of
+  // this year. Without this, a roll spanning the year boundary walks
+  // straight onto a closed federal office.
+  const jan1Next = new Date(Date.UTC(year + 1, 0, 1));
+  if (jan1Next.getUTCDay() === 6) out.add(toISO(new Date(Date.UTC(year, 11, 31))));
   return out;
 }
 
@@ -114,6 +129,7 @@ export function isExpired(startISO: string, years: number, asOfISO: string): boo
   const start = parseISO(startISO);
   const asOf = parseISO(asOfISO);
   if (!start || !asOf) return null;
+  if (!Number.isInteger(years)) return null; // fractional years would truncate silently
   const y = start.getUTCFullYear() + years;
   const m = start.getUTCMonth();
   const day = start.getUTCDate();
