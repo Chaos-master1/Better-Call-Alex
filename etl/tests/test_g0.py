@@ -183,6 +183,12 @@ class TestG0(unittest.TestCase):
         print(f"\n  docket->court join coverage: {pct}% "
               f"({report.get('court_id_resolved', 0):,}/{report.get('clusters_total', 0):,})")
         self.assertIsInstance(pct, float)
+        # A float of any value used to pass, including 0.0. The G0 gate
+        # says to report the coverage before building on it: unresolvable
+        # forums silently drop out of every jurisdiction filter, so
+        # near-total coverage is load-bearing, not decorative.
+        self.assertGreaterEqual(pct, 99.0)
+        self.assertGreaterEqual(report.get("clusters_total", 0), 10_000_000)
 
 
 if __name__ == "__main__":
