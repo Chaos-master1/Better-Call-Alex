@@ -97,7 +97,18 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind_ts ON audit_log(kind, ts);
  * If the app DB file does not exist, the schema is created.
  */
 export function openApp(): Database.Database {
-  const db = new Database(APP_PATH);
+  // ALEX_APP_DB overrides the path for route-level tests (tmp DBs) and
+  // safe local experimentation. Production never sets it.
+  return openAppAt(process.env.ALEX_APP_DB ?? APP_PATH);
+}
+
+/**
+ * Open the app database at an explicit path. Production uses APP_PATH via
+ * openApp(); tests point at tmp files so no test ever touches the real
+ * data/app.sqlite. Same schema, migrations, and stale-run recovery.
+ */
+export function openAppAt(dbPath: string): Database.Database {
+  const db = new Database(dbPath);
   // Writers contend (server runs + CLI + evals share this file): wait
   // instead of failing fast with SQLITE_BUSY surfacing as a 500.
   db.pragma(`busy_timeout = 5000`);

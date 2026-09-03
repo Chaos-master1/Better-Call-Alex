@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         .prepare(`INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`)
         .run(`web-${randomUUID()}`, title, facts).lastInsertRowid
     );
-    const out = await runCase(app, caseId, facts);
+    const out = await runCase(app, caseId, facts, { signal: req.signal });
     const auditRows = app
       .prepare(
         `SELECT ts, kind, payload FROM audit_log WHERE case_id = ? ORDER BY id DESC LIMIT 12`
