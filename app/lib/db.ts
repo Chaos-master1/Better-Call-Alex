@@ -102,13 +102,20 @@ export function resolveCluster(
 
     let citedBy = 0;
     if (clusterId != null) {
+      // Direct citations only: depth 1 (CourtListener direct edge) or NULL
+      // (anchor-only in-text mention, direct by construction). Transitive
+      // depth > 1 edges would inflate "cited by" with cases that never
+      // cited this one. De-indexed citers are excluded (§9.7).
       citedBy =
         (
           db
             .prepare(
               `SELECT count(DISTINCT ci.citing_id) AS n FROM cites ci
-               JOIN opinions po ON po.id = ci.cited_id
-               WHERE po.cluster_id = ?`
+                JOIN opinions po ON po.id = ci.cited_id
+                JOIN opinions ping ON ping.id = ci.citing_id
+                WHERE po.cluster_id = ?
+                  AND (ci.depth = 1 OR ci.depth IS NULL)
+                  AND ping.blocked = 0`
             )
             .get(clusterId) as { n: number } | undefined
         )?.n ?? 0;

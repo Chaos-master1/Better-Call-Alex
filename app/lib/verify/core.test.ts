@@ -16,6 +16,7 @@ import {
   analyzeCitationsAndQuotes,
   type BridgeCitation,
 } from "./core.js";
+import { resolveCluster } from "../db.js";
 import { verifyText } from "./verify.js";
 import { verifyTextAsync } from "./verify_async.js";
 
@@ -50,8 +51,7 @@ function memoryCorpus(): Database.Database {
   return db;
 }
 
-function fullCite(page: string, start = 0, end = 11): BridgeCitation {
-  return {
+function fullCite(page: string, start = 0, end = 11): BridgeCitation {  return {
     text: `410 U.S. ${page}`,
     corrected: `410 U.S. ${page}`,
     volume: "410",
@@ -109,7 +109,32 @@ test("quote fully inside RECORD stays exempt (§5.3 rule itself)", () => {
   }
 });
 
+// ——— cited-by counts direct unblocked citers only ———
+
+test("cited_by excludes transitive and de-indexed citers", () => {
+  const db = memoryCorpus();
+  try {
+    db.exec(
+      `INSERT INTO opinions (id, cluster_id, case_name, blocked, text) VALUES
+        (2, 200, 'Direct Citer', 0, 'citing text'),
+        (3, 300, 'Indirect Citer', 0, 'citing text'),
+        (4, 400, 'Blocked Citer', 1, 'citing text'),
+        (5, 500, 'Anchor-only Citer', 0, 'citing text')`
+    );
+    db.exec(
+      `INSERT INTO cites (citing_id, cited_id, depth) VALUES
+        (2, 1, 1), (3, 1, 3), (4, 1, 1), (5, 1, NULL)`
+    );
+    const res = resolveCluster(db, "410", "U.S.", "113");
+    assert.ok(res);
+    // direct (2) + anchor-only (5); transitive (3) and blocked (4) excluded.
+    assert.equal(res.cited_by, 2);
+  } finally {
+    db.close();
+  }
+});
 // ——— bridge transport parity: fail the draft, never the pipeline ———
+
 /** Fake "python": ignores argv, runs the given shell body. Restores env. */
 async function withFakePython(body: string, fn: () => void | Promise<unknown>): Promise<void> {
   const dir = mkdtempSync(path.join(tmpdir(), "alex-bridge-"));
