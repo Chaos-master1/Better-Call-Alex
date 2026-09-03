@@ -357,7 +357,12 @@ export function extractPassage(
   }
   const start =
     best === -1 ? 0 : Math.max(0, best - Math.floor(len / 4));
-  return { text: collapsed.slice(start, start + len).trim(), start, end: start + len };
+  // end tracks the TRIMMED text exactly: text[start:end] === text must hold
+  // for any consumer that slices with these offsets.
+  const sliced = collapsed.slice(start, start + len);
+  const lead = sliced.length - sliced.trimStart().length;
+  const body = sliced.trim();
+  return { text: body, start: start + lead, end: start + lead + body.length };
 }
 
 export function search(

@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { matchJurisdiction } from "./search.js";
+import { extractPassage, matchJurisdiction, tokenize, matchExpression } from "./search.js";
 
 function memoryCourts(): Database.Database {
   const db = new Database(":memory:");
@@ -61,6 +61,40 @@ test("LIKE wildcards in forum text cannot broaden the match", () => {
   const db = memoryCourts();
   try {
     assert.equal(matchJurisdiction(db, "%"), null);
+  } finally {
+    db.close();
+  }
+});
+
+test("passage offsets are exact for the returned text", () => {
+  const hay =
+    "   leading space then the qualified immunity doctrine appears here with context after.   ";
+  const p = extractPassage(hay, ["qualified immunity"]);
+  const collapsed = hay.replace(/\s+/g, " ");
+  assert.equal(collapsed.slice(p.start, p.end), p.text);
+  assert.ok(p.text.includes("qualified immunity"));
+});
+
+test("MATCH expressions from hostile input execute without throwing", () => {
+  const db = new Database(":memory:");
+  try {
+    db.exec(`CREATE VIRTUAL TABLE t USING fts5(x, tokenize='porter unicode61')`);
+    db.exec(`INSERT INTO t (x) VALUES ('the clock struck noon'), ('or not to be')`);
+    const hostile = [
+      "o'clock",
+      "to be or not to be",
+      '"quoted phrase"',
+      "a*b (c) § 1983",
+      "100% guaranteed—unicode’s test",
+      "",
+      "a",
+    ];
+    for (const q of hostile) {
+      const expr = matchExpression(tokenize(q));
+      if (expr === null) continue;
+      // Must not throw (FTS syntax breakout) — results may be empty.
+      db.prepare(`SELECT count(*) FROM t WHERE t MATCH ?`).get(expr);
+    }
   } finally {
     db.close();
   }
