@@ -76,10 +76,17 @@ never depends on identification.
 | metric | value | source |
 |---|---|---|
 | fabrication catch rate | **100%** (9/9) | `pnpm g2`, this repo |
-| treatment recall | **0.774** (941/1216) | LegalBench `overruling` test split |
-| treatment false-positive rate | **0.014** (16/1178) | same |
+| treatment-language recall | **0.774** (941/1216) | LegalBench `overruling` test split — see note below |
+| treatment-language false-positive rate | **0.014** (16/1178) | same |
 | scanner extension delta | recall .525→.774, FPR .011→.014 | `disapprov*`, `supersed*`, `depart* from`, `no longer good law/controlling/followed/valid`; `reject` tested and excluded (+2pp recall for +1.3pp FPR) |
-| unit tests | 11 TS + 8 Python green | `pnpm test`, `unittest` |
+| unit tests | green (`pnpm test` + `unittest`; counts move — see test files, not this table) | |
+
+> **Reading the .774 honestly:** the measurement counts *any*
+> treatment-language hit (`distinguish*`, `but see`, `declined to follow`
+> included) as a positive, so it is treatment-*language* recall, not
+> overruled-bit recall. Only ~51% of cites edges carry context at all, so
+> half the graph is unscannable by construction. Neither caveat changes the
+> gate (fabrication catch), but neither may be quoted as citator accuracy.
 
 Corpus treatment flags rebuilt with the extended scanner via
 `uv run python etl/build_authority.py reflag` (updates only
@@ -101,11 +108,13 @@ Corpus treatment flags rebuilt with the extended scanner via
    signals for triage, never assertions of overruling (§5.5).
 5. Quote attribution is heuristic (nearest-citation adjacency); documents
    quoting two cases inside one sentence pair may mis-attribute.
-6. Bridge spawns a Python process per verification (**0.33 s measured**,
-   dominated by imports); batch mode (`{"texts": [...]}`) amortizes this
+6. Bridge spawns a Python process per verification (sub-second, dominated
+   by imports; historically ~0.33 s warm, ~1.5 s cold — machine-dependent,
+   not a contract); batch mode (`{"texts": [...]}`) amortizes this
    when verifying many drafts. `verifyText` is synchronous by design for
-   CLI use — a G3 server must wrap it in an async worker, not call it on
-   the request thread.
+   CLI use — the server uses `verify_async.ts` (spawn, not spawnSync), not
+   the request thread. Batch mode exists in `bridge.py` (`{"texts": [...]}`)
+   but no caller batches yet — every verification sends a single text.
 
 ## Licensing
 

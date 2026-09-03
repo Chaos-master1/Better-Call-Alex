@@ -26,9 +26,12 @@ Gate suite: `uv run python etl/tests/test_g0.py` — 7/7 pass, including
 data/raw/opinions-2026-06-30.csv        349,716,707,859 bytes  (~11.3 M rows)
 data/raw/opinion-clusters-2026-06-30.csv       ~12 GB         (~10.8 M rows)
 data/bulk/*.csv.bz2                     dockets, citation-map, citations,
-                                        parentheticals, courts, courthouses,
+                                        parentheticals, courts,
                                         people-db-people, schema.sql
 ```
+Fetched by `uv run etl/download.py` (manifest = exactly what the build
+consumes). `courthouses-*.csv.bz2` exists upstream but no stage reads it —
+deliberately not fetched, not ingested (nothing consumes court addresses).
 
 ## CSV dialect — the escape trap
 
@@ -44,10 +47,14 @@ csv.field_size_limit(10**9)
 
 Records span multiple physical lines (embedded newlines inside quoted text), so
 shards are cut by byte offset and resynchronized to a record boundary with
-`^"\d+","\d{4}-` (`etl/build_corpus.py::find_resync`). Each shard validates
-every row: parsed id must equal the leading integer of its first physical line;
->50 consecutive mismatches aborts the worker instead of silently writing
-garbage.
+`^"\d+","\d{4}-` (`etl/common.py::find_resync_offset`). Each shard validates
+every row three ways: parsed id must equal the leading integer of its first
+physical line (>50 consecutive mismatches aborts the worker); row width must
+equal the header width (the 22-field trap — shifted rows are counted and
+skipped, never inserted); pathological HTML values are quarantined, never
+fatal. Every in-text citation mention keeps its own anchors row (pair ×
+char_pos), so a treatment-bearing second mention survives to the cites
+context.
 
 ## Text extraction
 
@@ -68,10 +75,10 @@ stored alongside.
 | `clusters-dockets` | dockets.bz2 | sidecar `.clusters.sqlite` docket→court map |
 | `clusters-join` | clusters.csv | sidecar clusters table + `docs/g0-join-coverage.json` |
 | `small` | courts/people/citations bz2 | corpus.sqlite courts, judges, citation_strings |
-| `citormap` | citation-map.bz2 | staging citormap (~132 M edges) |
+| `citormap` | citation-map.bz2 | staging citormap (measured 77.5M edges, not the ~132M pre-build estimate) |
 | `parentheticals` | parentheticals.bz2 | parentheticals + FTS5 rebuild |
 | `shard --index N --total 12` | opinions.csv byte range | `.shards/shard_N.sqlite` |
-| `merge` | shards + citormap + anchors | main opinions; cites = citormap ⟕ anchors; FTS5 rebuild; indexes |
+| `merge` | shards + citormap + anchors | main opinions; cites = citormap ⟕ anchors on (pair × char_pos); FTS5 rebuild; indexes |
 
 All stages are idempotent via `.done` markers; a crashed stage reruns safely.
 Shard workers write isolated DB files, then merge ATTACHes them — no writer
