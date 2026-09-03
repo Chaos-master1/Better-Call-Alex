@@ -53,10 +53,28 @@ export interface RunOutput {
 // issuing concurrent Ollama loads that surface as "fetch failed".
 let _runQueue: Promise<void> = Promise.resolve();
 
+export interface RunOptions {
+  /** Client disconnect (route passes req.signal). Cooperative: checked at
+   *  every stage boundary — an in-flight model call still finishes, but the
+   *  pipeline stops at the next boundary instead of burning minutes and
+   *  holding the single-flight slot. The installed ollama client has no
+   *  per-call signal support, so boundary checks are the full mechanism. */
+  signal?: AbortSignal;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const e = new Error("run cancelled by client");
+    e.name = "AbortError";
+    throw e;
+  }
+}
+
 export async function runCase(
   appDb: Database.Database,
   caseId: number,
-  facts: string
+  facts: string,
+  opts: RunOptions = {}
 ): Promise<RunOutput> {
   // acquire single-flight slot
   let release!: () => void;
@@ -71,25 +89,34 @@ export async function runCase(
   // single-flight slot and deadlock every subsequent run.
   let corpus: Database.Database | null = null;
   try {
+    // The running row is created BEFORE any fallible work: a pre-intake
+    // throw (openCorpus, model load) must still leave a failed run behind,
+    // not an invisible case that 404s in history.
+    startRun(appDb, caseId);
+    throwIfAborted(opts.signal);
     corpus = openCorpus();
     // 1. intake (qwen3.5:9b)
     await useModel(RESIDENT_MODEL);
+    throwIfAborted(opts.signal);
     const intake = await intakeAgent(facts);
     persistIntake(appDb, caseId, intake);
     audit(appDb, "agent.intake", { caseId }, caseId);
 
     // 2. researcher (qwen3.5:9b, on resident model)
+    throwIfAborted(opts.signal);
     const research = await researcherAgent(intake, corpus);
     persistResearch(appDb, caseId, research);
     audit(appDb, "agent.researcher", { caseId, hits: research.hits.length }, caseId);
 
     // 3. swap to 14b for the analyst + adversary pass
+    throwIfAborted(opts.signal);
     await useModel(ANALYST_MODEL);
 
     const analyst = await analystAgent(intake, research);
     persistAnalyst(appDb, caseId, analyst);
     audit(appDb, "agent.analyst", { caseId }, caseId);
 
+    throwIfAborted(opts.signal);
     const adversary = await adversaryAgent(intake, research, analyst, corpus);
     persistAdversary(appDb, caseId, adversary);
     audit(appDb, "agent.adversary", { caseId }, caseId);
@@ -142,8 +169,25 @@ export async function runCase(
       ms: performance.now() - t0,
     };
   } catch (err) {
-    audit(appDb, "agent.error", { caseId, err: String(err) }, caseId);
-    finalizeRun(appDb, caseId, "failed", performance.now() - t0);
+    try {
+      audit(appDb, "agent.error", { caseId, err: String(err) }, caseId);
+    } catch {
+      // The audit write itself must never mask the pipeline error or skip
+      // finalization (DB-locked audit previously left rows running for an
+      // hour until recoverStaleRuns).
+    }
+    try {
+      // Restore the resident model even on failure: without this the daemon
+      // sits on the 14b weights and the next run pays an extra swap, which
+      // breaks the ≤2-swaps accounting and slows recovery.
+      await useModel(RESIDENT_MODEL);
+    } catch {
+      // Ollama itself is down — nothing to restore; the next run retries.
+    }
+    // A client-aborted run is cancelled, not failed: the pipeline did not
+    // break, the user walked away. History shows the truth either way.
+    const cancelled = (err as Error)?.name === "AbortError";
+    finalizeRun(appDb, caseId, cancelled ? "cancelled" : "failed", performance.now() - t0);
     throw err;
   } finally {
     try {
@@ -197,7 +241,8 @@ function persistIntake(
   caseId: number,
   intake: IntakeOutput
 ): void {
-  startRun(appDb, caseId);
+  // startRun() already ran before any fallible work (see runCase); this
+  // only persists the intake payload onto the running row.
   appDb
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`

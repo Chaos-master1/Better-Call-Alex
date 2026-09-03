@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type Database from "better-sqlite3";
 import { audit, openApp } from "../../../../../lib/app_db";
 import { openCorpus } from "../../../../../lib/db";
+import { toJsonError } from "../../../../../lib/http";
 import type { DraftDoc } from "../../../../../lib/draft";
 import {
   buildMotionDocx,
@@ -110,6 +111,8 @@ export async function GET(
     }
 
     // ——— build + persist + stream ———
+    // documents + audit write atomically: a crash between them must never
+    // leave a motion file with no drafter.export audit row (§5.6).
     const buf = await buildMotionDocx(drafted);
     const filename = exportFilename(caseId, row.title);
     const body = planMotionParagraphs(drafted)
@@ -119,17 +122,20 @@ export async function GET(
           : b.text
       )
       .join("\n\n");
-    app
-      .prepare(
-        `INSERT INTO documents (case_id, kind, title, body) VALUES (?, 'motion', ?, ?)`
-      )
-      .run(caseId, filename, body);
-    audit(
-      app,
-      "drafter.export",
-      { caseId, filename, bytes: buf.length },
-      caseId
-    );
+    const persist = app.transaction(() => {
+      app
+        .prepare(
+          `INSERT INTO documents (case_id, kind, title, body) VALUES (?, 'motion', ?, ?)`
+        )
+        .run(caseId, filename, body);
+      audit(
+        app,
+        "drafter.export",
+        { caseId, filename, bytes: buf.length },
+        caseId
+      );
+    });
+    persist();
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
@@ -140,6 +146,8 @@ export async function GET(
         "Content-Length": String(buf.length),
       },
     });
+  } catch (e) {
+    return toJsonError("api/cases/[id]/export", e);
   } finally {
     app.close();
   }

@@ -98,13 +98,23 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind_ts ON audit_log(kind, ts);
  */
 export function openApp(): Database.Database {
   const db = new Database(APP_PATH);
+  // Writers contend (server runs + CLI + evals share this file): wait
+  // instead of failing fast with SQLITE_BUSY surfacing as a 500.
+  db.pragma(`busy_timeout = 5000`);
   // The schema uses IF NOT EXISTS for every table, index, and trigger,
   // so this is idempotent on a populated DB.
   db.exec(SCHEMA);
   db.pragma(`journal_mode = WAL`);
   db.pragma(`foreign_keys = ON`);
   migrate(db);
-  recoverStaleRuns(db);
+  // Best-effort: a crashed run's stale row must not block reads, but a
+  // recovery UPDATE that itself fails (locked/remote FS) must not take
+  // down the open — the row simply ages out on the next healthy open.
+  try {
+    recoverStaleRuns(db);
+  } catch (e) {
+    console.error("[app_db] recoverStaleRuns skipped:", String(e).slice(0, 160));
+  }
   return db;
 }
 
@@ -115,12 +125,23 @@ export function openApp(): Database.Database {
 function migrate(db: Database.Database): void {
   const auditCols = db.pragma("table_info(audit_log)") as Array<{ name: string }>;
   if (!auditCols.some((c) => c.name === "case_id")) {
-    db.exec("ALTER TABLE audit_log ADD COLUMN case_id INTEGER");
+    addColumn(db, "audit_log", "case_id INTEGER");
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_audit_case ON audit_log(case_id)");
   const runCols = db.pragma("table_info(runs)") as Array<{ name: string }>;
   if (!runCols.some((c) => c.name === "ms")) {
-    db.exec("ALTER TABLE runs ADD COLUMN ms INTEGER");
+    addColumn(db, "runs", "ms INTEGER");
+  }
+}
+
+/** ADD COLUMN has no IF NOT EXISTS: concurrent first-opens can both pass
+ *  the pragma check and race to ALTER. The loser gets "duplicate column
+ *  name" — a won race, not an error. Anything else rethrows. */
+function addColumn(db: Database.Database, table: string, def: string): void {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${def}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String((e as Error)?.message ?? e))) throw e;
   }
 }
 

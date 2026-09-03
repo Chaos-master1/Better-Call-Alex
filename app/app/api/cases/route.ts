@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openApp } from "../../../lib/app_db";
+import { toJsonError } from "../../../lib/http";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,8 @@ export async function GET() {
       };
     });
     return NextResponse.json({ cases });
+  } catch (e) {
+    return toJsonError("api/cases", e);
   } finally {
     app.close();
   }

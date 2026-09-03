@@ -5,6 +5,7 @@
 
 /** YYYY-MM-DD → Date (UTC). Returns null on bad format. */
 export function parseISO(s: string): Date | null {
+  if (typeof s !== "string") return null;
   const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
@@ -18,10 +19,10 @@ export function toISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Add calendar days, UTC. */
+/** Add calendar days, UTC. Null on bad input (never throws). */
 export function addDays(iso: string, days: number): string | null {
   const d = parseISO(iso);
-  if (!d) return null;
+  if (!d || !Number.isFinite(days)) return null;
   d.setUTCDate(d.getUTCDate() + days);
   return toISO(d);
 }
@@ -48,7 +49,9 @@ export function daysBetween(aISO: string, bISO: string): number | null {
  *  last-weekday / fixed), so no data source and no staleness. Juneteenth
  *  included from 2021 onward. */
 export function federalHolidays(year: number): Set<string> {
-  const nthWeekday = (month: number, weekday: number, n: number) => {
+  if (!Number.isInteger(year)) {
+    throw new RangeError(`federalHolidays: year must be an integer, got ${String(year)}`);
+  }  const nthWeekday = (month: number, weekday: number, n: number) => {
     const d = new Date(Date.UTC(year, month, 1));
     while (d.getUTCDay() !== weekday) d.setUTCDate(d.getUTCDate() + 1);
     d.setUTCDate(d.getUTCDate() + 7 * (n - 1));
@@ -101,7 +104,9 @@ export function federalHolidays(year: number): Set<string> {
 }
 
 /** Roll forward to next business day: skips weekends and US federal holidays
- *  (G4 gate: "weekend/holiday rolls"). Deterministic. */
+ *  (G4 gate: "weekend/holiday rolls"). Deterministic. Note the name: this
+ *  ALWAYS advances at least one day. To file ON an open deadline, use
+ *  filingDate() — rolling an already-open date forward overshoots it. */
 export function nextBusinessDay(iso: string): string | null {
   const d = parseISO(iso);
   if (!d) return null;
@@ -118,6 +123,24 @@ export function nextBusinessDay(iso: string): string | null {
     holidays(d.getUTCFullYear()).has(toISO(d))
   );
   return toISO(d);
+}
+
+/** True iff `iso` is itself an open business day (weekday, not a federal
+ *  holiday). Null on bad input. */
+export function isBusinessDay(iso: string): boolean | null {
+  const d = parseISO(iso);
+  if (!d) return null;
+  if (d.getUTCDay() === 0 || d.getUTCDay() === 6) return false;
+  return !federalHolidays(d.getUTCFullYear()).has(toISO(d));
+}
+
+/** Filing date for a computed deadline: the deadline itself when open,
+ *  otherwise the next business day. This is the composition callers want —
+ *  nextBusinessDay() alone overshoots an open deadline by a day. */
+export function filingDate(deadlineISO: string): string | null {
+  const open = isBusinessDay(deadlineISO);
+  if (open === null) return null;
+  return open ? deadlineISO : nextBusinessDay(deadlineISO);
 }
 
 /** Is the interval [start, cutoff) expired as of `asOf`? The deadline is the
@@ -169,7 +192,7 @@ export interface TollingWindow {
  *  overlapping windows are counted once (union, never double-counted).
  *
  *  Returns the UNROLLED anniversary deadline; callers that need a filing
- *  date roll it with nextBusinessDay(). Returns null on bad input. */
+ *  date compose with filingDate(). Returns null on bad input. */
 export function solDeadline(
   startISO: string,
   years: number,
@@ -180,9 +203,12 @@ export function solDeadline(
   if (!start || !base) return null;
   const DAY = 86_400_000;
   // Normalize windows: valid dates only, positive length, INCLUSIVE end
-  // (the endpoint day counts), sorted for the sweep.
+  // (the endpoint day counts), sorted for the sweep. Non-array tolling is
+  // ignored, not iterated (a truthy non-array would otherwise throw or,
+  // worse, iterate garbage).
+  const list: TollingWindow[] = Array.isArray(tolling) ? tolling : [];
   const windows: Array<[number, number]> = [];
-  for (const w of tolling ?? []) {
+  for (const w of list) {
     const s = parseISO(w?.start ?? "");
     const e = parseISO(w?.end ?? "");
     if (!s || !e || e.getTime() < s.getTime()) continue;
@@ -206,7 +232,13 @@ export function solDeadline(
   };
 
   let deadline = base.getTime();
-  for (let iter = 0; iter < 8; iter++) {
+  // Principled cap, not a magic 8: the extension is monotone and each
+  // non-converging iteration absorbs at least one more disjoint window
+  // cluster, so windows.length + 2 always suffices; the +1000 hard stop
+  // after it is unreachable insurance, never a silent undercount path.
+  const cap = windows.length + 2;
+  let iter = 0;
+  for (; iter < cap + 1000; iter++) {
     const extended = base.getTime() + unionDaysUntil(deadline) * DAY;
     if (extended === deadline) break;
     deadline = extended;

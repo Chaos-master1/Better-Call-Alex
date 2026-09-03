@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openApp } from "../../../../lib/app_db";
+import { toJsonError } from "../../../../lib/http";
 
 export const runtime = "nodejs";
 
@@ -124,6 +125,8 @@ export async function GET(
       audit: auditRows,
       ms: run.ms ?? 0,
     });
+  } catch (e) {
+    return toJsonError("api/cases/[id]", e);
   } finally {
     app.close();
   }

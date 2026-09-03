@@ -12,6 +12,8 @@ import {
   addDays,
   daysBetween,
   nextBusinessDay,
+  isBusinessDay,
+  filingDate,
   isExpired,
   federalHolidays,
   solDeadline,
@@ -257,4 +259,46 @@ test("solDeadline composes with nextBusinessDay for the filing date", () => {
   // 2026-01-01 is a federal holiday (New Year's Day, Thursday): the filing
   // deadline rolls to Friday 2026-01-02.
   assert.equal(nextBusinessDay(solDeadline("2024-01-01", 2) ?? ""), "2026-01-02");
+});
+
+// ——— Phase 3 hardening: null-never-throw, open-deadline composition ———
+
+test("parseISO/addDays return null on non-string and non-finite input", () => {
+  assert.equal(parseISO(null as unknown as string), null);
+  assert.equal(parseISO(20240101 as unknown as string), null);
+  assert.equal(addDays("2024-01-01", NaN), null);
+  assert.equal(addDays("2024-01-01", Infinity), null);
+  assert.equal(addDays("bad", 5), null);
+});
+
+test("federalHolidays rejects non-integer years loudly", () => {
+  assert.throws(() => federalHolidays(NaN), RangeError);
+  assert.throws(() => federalHolidays(2024.5), RangeError);
+});
+
+test("solDeadline ignores non-array tolling instead of throwing", () => {
+  assert.equal(
+    solDeadline("2024-01-01", 2, "2024-06-01" as unknown as []),
+    "2026-01-01"
+  );
+});
+
+test("solDeadline converges past 8 disjoint windows (old silent cap)", () => {
+  const windows = [];
+  for (let m = 0; m < 10; m++) {
+    const mm = String(m + 1).padStart(2, "0");
+    windows.push({ start: `2024-${mm}-01`, end: `2024-${mm}-10` });
+  }
+  // 10 × 10-day windows = 100 days past the 2026-01-01 anniversary.
+  assert.equal(solDeadline("2024-01-01", 2, windows), "2026-04-11");
+});
+
+test("filingDate keeps an open deadline, rolls a closed one", () => {
+  assert.equal(filingDate("2026-01-02"), "2026-01-02"); // Friday, open
+  assert.equal(filingDate("2026-01-01"), "2026-01-02"); // holiday → Friday
+  assert.equal(filingDate("2026-01-03"), "2026-01-05"); // Saturday → Monday
+  assert.equal(filingDate("bad"), null);
+  assert.equal(isBusinessDay("2026-01-01"), false);
+  assert.equal(isBusinessDay("2026-01-02"), true);
+  assert.equal(isBusinessDay("bad"), null);
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { openCorpus, resolveCluster } from "../../../lib/db";
 import { parseCitation } from "../../../lib/citation";
+import { toJsonError } from "../../../lib/http";
 import {
   parseStatuteCites,
   resolveStatute,
@@ -10,9 +11,21 @@ import {
 
 export const runtime = "nodejs";
 
+/** Citations are short; anything longer is a paste accident or abuse. */
+const MAX_CITE_CHARS = 200;
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cite = searchParams.get("cite") ?? "";
+  if (!cite.trim()) {
+    return NextResponse.json({ error: "cite is required" }, { status: 400 });
+  }
+  if (cite.length > MAX_CITE_CHARS) {
+    return NextResponse.json(
+      { error: `cite exceeds the ${MAX_CITE_CHARS}-character limit` },
+      { status: 400 }
+    );
+  }
   let db;
   try {
     db = openCorpus();
@@ -40,6 +53,8 @@ export async function GET(req: Request) {
       { error: `NO AUTHORITY FOUND IN CORPUS for "${cite}"` },
       { status: 404 }
     );
+  } catch (e) {
+    return toJsonError("api/lookup", e);
   } finally {
     db.close();
   }

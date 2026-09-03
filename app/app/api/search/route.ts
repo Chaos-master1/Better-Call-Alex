@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openCorpus } from "../../../lib/db";
+import { toJsonError } from "../../../lib/http";
 import { search } from "../../../lib/retrieval/search";
 
 export const runtime = "nodejs";
@@ -7,7 +8,10 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
-  const jurisdiction = searchParams.get("jurisdiction") ?? undefined;
+  // Present-but-empty (?jurisdiction=) means "no filter", not "match
+  // nothing": an empty set would 200 with [] — indistinguishable from a
+  // real no-results answer.
+  const jurisdiction = searchParams.get("jurisdiction")?.trim() || undefined;
   // Clamp: `?limit=abc` must not become NaN (which would disable every
   // early-exit in search() and return the whole candidate pool).
   const limit = Math.min(
@@ -32,6 +36,8 @@ export async function GET(req: Request) {
     const hits = search(db, q, { jurisdiction, limit });
     const ms = Math.round(performance.now() - t0);
     return NextResponse.json({ query: q, elapsed_ms: ms, hits });
+  } catch (e) {
+    return toJsonError("api/search", e);
   } finally {
     db.close();
   }

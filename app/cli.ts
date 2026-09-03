@@ -110,19 +110,38 @@ async function main() {
       console.error('usage: alex run "<free-text fact pattern>"');
       process.exit(2);
     }
-    const app = openApp();
+    // Mirror the API's 16k cap (run/route.ts): unbounded pastes burn
+    // minutes of model time against the 32k window.
+    if (facts.length > 16_000) {
+      console.error(`facts exceeds the 16000-character limit (${facts.length})`);
+      process.exit(2);
+    }
+    let app;
+    try {
+      app = openApp();
+    } catch {
+      console.error("app database unavailable — start the app once to create data/app.sqlite");
+      process.exit(1);
+    }
     const title = facts.length > 80 ? facts.slice(0, 77) + "..." : facts;
-    const caseId = Number(
-      app
-        .prepare(
-          `INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`
-        )
-        .run(
-          `cli-${randomUUID()}`,
-          title,
-          facts
-        ).lastInsertRowid
-    );
+    let caseId: number;
+    try {
+      caseId = Number(
+        app
+          .prepare(
+            `INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`
+          )
+          .run(
+            `cli-${randomUUID()}`,
+            title,
+            facts
+          ).lastInsertRowid
+      );
+    } catch (e) {
+      app.close();
+      console.error(`could not create case: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+      process.exit(1);
+    }
     try {
       const out = await runCase(app, caseId, facts);
       console.log(

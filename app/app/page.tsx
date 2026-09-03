@@ -92,6 +92,10 @@ export default function Home() {
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Monotone generation: every run submit and every history open bumps it;
+  // a response that arrives for an older generation is dropped. This is
+  // what makes "last click wins" true regardless of finish order.
+  const genRef = useRef(0);
 
   const loadCases = useCallback(async () => {
     try {
@@ -114,10 +118,12 @@ export default function Home() {
     setOut(null);
     // One flight at a time: a new submit aborts the previous request so a
     // stale run can never clobber a fresh one (the server queue still
-    // serializes model work).
+    // serializes model work). The generation counter below extends the same
+    // protection to history loads racing a run.
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
+    const gen = ++genRef.current;
     startTransition(async () => {
       try {
         const r = await fetch("/api/run", {
@@ -126,6 +132,7 @@ export default function Home() {
           body: JSON.stringify({ facts }),
           signal: ac.signal,
         });
+        if (gen !== genRef.current) return; // superseded — drop stale result
         if (!r.ok) {
           const t = await r.text();
           setErr(`${r.status} ${r.statusText}: ${t.slice(0, 600)}`);
@@ -136,6 +143,7 @@ export default function Home() {
         loadCases();
       } catch (e: any) {
         if (e?.name === "AbortError") return; // cancelled by a newer submit
+        if (gen !== genRef.current) return;
         setErr(String(e?.message ?? e));
       }
     });
@@ -148,9 +156,14 @@ export default function Home() {
 
   const openCase = (id: number) => {
     setErr(null);
+    // History loads are cheap reads: they must work while a model run is in
+    // flight (no `pending` gate) and must never clobber a newer selection —
+    // last click wins via the generation counter, not last finish.
+    const gen = ++genRef.current;
     startTransition(async () => {
       try {
         const r = await fetch(`/api/cases/${id}`);
+        if (gen !== genRef.current) return;
         if (!r.ok) {
           const t = await r.text();
           setErr(`${r.status}: ${t.slice(0, 300)}`);
@@ -158,6 +171,7 @@ export default function Home() {
         }
         setOut((await r.json()) as RunResponse);
       } catch (e: any) {
+        if (gen !== genRef.current) return;
         setErr(String(e?.message ?? e));
       }
     });
@@ -176,8 +190,8 @@ export default function Home() {
             <li key={c.id}>
               <button
                 onClick={() => openCase(c.id)}
-                disabled={pending}
                 aria-label={`Open case ${c.id}: ${c.title}`}
+                title={c.title}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -185,7 +199,7 @@ export default function Home() {
                   border: "1px solid #262626",
                   borderRadius: 6,
                   padding: "8px 10px",
-                  cursor: pending ? "wait" : "pointer",
+                  cursor: "pointer",
                   color: "#d4d4d4",
                 }}
               >
@@ -375,15 +389,22 @@ function ExportDocxButton({ caseId }: { caseId: number }) {
               setRefused(`${r.status}: ${detail.slice(0, 200)}`);
               return;
             }
+            // Honor the server's slugged filename (it sanitizes the free-text
+            // title); fall back to the bare id form.
+            const disp = r.headers.get("content-disposition") ?? "";
+            const m = disp.match(/filename="([^"]+)"/);
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `alex-case-${caseId}.docx`;
+            a.download = m?.[1] ?? `alex-case-${caseId}.docx`;
             document.body.appendChild(a);
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
+          } catch (e: any) {
+            // Network failure (server down mid-click): previously silent.
+            setRefused(`export failed: ${String(e?.message ?? e).slice(0, 160)}`);
           } finally {
             setBusy(false);
           }
