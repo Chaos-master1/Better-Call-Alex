@@ -1,0 +1,36 @@
+{
+  "gate": "G5 — Case files, drafting, DOCX export",
+  "verified": "2026-09-03",
+  "overall": "pass",
+  "demo_motion": {
+    "case_id": 32,
+    "title": "Regulatory taking, just compensation",
+    "source": "G3 live run 2026-08-30 (Lucas / Tahoe-Sierra); no new LLM run needed — export is deterministic over the stored draft",
+    "resolve_gate": "4/4 citations resolve (505 U.S. 1003, 535 U.S. 302 + sentence pins); 0 unresolvable",
+    "artifact": "logs/g5-motion.docx (~10 KB, 28 OOXML paragraphs)",
+    "docx_checks": "zip valid; banner present; both appendix citations present; one paragraph per sentence (no embedded newlines); strike probe on synthetic draft: exactly 1 true <w:strike/> on the unverified sentence, 0 w:val=\"false\" leftovers, UNVERIFIED marker present"
+  },
+  "http_end_to_end": {
+    "export_200": "GET /api/cases/32/export → 200, content-type application/vnd.openxmlformats-officedocument.wordprocessingml.document, attachment filename alex-case-32-regulatory-taking-just-compensation.docx, valid .docx bytes",
+    "persistence": "documents row (kind='motion', plain-text body) + audit_log drafter.export row, both scoped to case 32",
+    "refusal_404": "GET /api/cases/999999/export → 404 no drafted run for case",
+    "refusal_409": "scratch case with fabricated appendix cite '494 U.S. 560' (real Muniz cite is 496 U.S. 582) → 409 with unresolvable list; zero documents/audit side effects; scratch rows deleted after"
+  },
+  "implementation": {
+    "exporter": "app/lib/export_docx.ts — pure planMotionParagraphs() (unit-tested) + thin buildMotionDocx() over the canon-confirmed docx lib; banner first in code (§11); unverified sentences kept struck-through (§3); inferred sentences italic (§5.5)",
+    "route": "app/app/api/cases/[id]/export/route.ts — fail-closed resolve gate over appendix + pin cites (case parse → resolveCluster, statute parse → resolveStatute), then build + persist + stream",
+    "ui": "Export .docx button beside Copy draft in the Result header; 409 detail renders inline",
+    "runner": "evals/run_g5.ts (pnpm g5) — same gate offline, writes logs/g5-motion.docx"
+  },
+  "scope_notes": [
+    "DOCX only. No PDF path: react-pdf silently ignores whiteSpace: pre-wrap (noted in the G5 gate row), and no failing eval case demands a second format (§2).",
+    "Export refuses drafts with unresolvable citations (409) rather than emitting them; struck-through UNVERIFIED sentences without a citation form still export, mirroring the UI."
+  ],
+  "regression_evidence": {
+    "typescript_tests": "67/67 pass (60 baseline + 7 export_docx)",
+    "g2_fixture_gate": "9/9 fabrication catch (100%)",
+    "g3_offline_harness": "PASS",
+    "tsc": "clean",
+    "next_build": "clean, /api/cases/[id]/export registered"
+  }
+}

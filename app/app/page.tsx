@@ -352,6 +352,59 @@ function CopyDraftButton({ out }: { out: RunResponse }) {
   );
 }
 
+function ExportDocxButton({ caseId }: { caseId: number }) {
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setRefused(null);
+          try {
+            const r = await fetch(`/api/cases/${caseId}/export`);
+            if (!r.ok) {
+              let detail = await r.text();
+              try {
+                const j = JSON.parse(detail) as { error?: string; unresolvable?: string[] };
+                detail = j.unresolvable?.length
+                  ? `${j.error}: ${j.unresolvable.join("; ")}`
+                  : (j.error ?? detail);
+              } catch { /* keep raw text */ }
+              setRefused(`${r.status}: ${detail.slice(0, 200)}`);
+              return;
+            }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `alex-case-${caseId}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        style={{
+          padding: "3px 10px",
+          background: "#052e16",
+          color: "#4ade80",
+          border: "1px solid #14532d",
+          borderRadius: 6,
+          cursor: busy ? "wait" : "pointer",
+          fontSize: 11,
+        }}
+      >
+        {busy ? "Exporting…" : "Export .docx"}
+      </button>
+      {refused && <span style={{ fontSize: 11, color: "#fca5a5" }}>{refused}</span>}
+    </span>
+  );
+}
+
 function Result({ out }: { out: RunResponse }) {
   const verified = out.draft.sentences.filter((s) => s.verified).length;
   const total = out.draft.sentences.length;
@@ -363,6 +416,7 @@ function Result({ out }: { out: RunResponse }) {
           {out.draft.overall.toUpperCase()} · {verified}/{total} verified · {(out.ms / 1000).toFixed(1)}s · run {out.run_id}
         </span>
         <CopyDraftButton out={out} />
+        <ExportDocxButton caseId={out.case_id} />
         <span style={{ fontSize: 11, color: "#737373" }}>{out.drafted.generated_at}</span>
       </div>
 
