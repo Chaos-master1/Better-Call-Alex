@@ -39,7 +39,7 @@ test(
   }
 );
 
-test("negative-treatment fallback returns nothing without a cluster", () => {
+test("negative-treatment fallback returns nothing without a cluster", { skip: !HAS_DB }, () => {
   const db = openCorpus();
   try {
     assert.equal(negativeTreatmentHits(db, null, "anything", 5).length, 0);

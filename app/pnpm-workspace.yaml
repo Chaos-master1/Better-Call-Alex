@@ -1,0 +1,8 @@
+# pnpm 11+ refuses to run install-time build scripts without explicit
+# approval. better-sqlite3 NEEDS its build (native binding — nothing works
+# without it); esbuild is tsx's compiler. Without this file, `pnpm install`
+# on a fresh clone aborts with ERR_PNPM_IGNORED_BUILDS and leaves a broken
+# node_modules. This is the pnpm-sanctioned mechanism, not clutter.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true

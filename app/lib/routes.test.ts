@@ -8,14 +8,21 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { openAppAt } from "../lib/app_db.js";
 import { GET as lookupGET } from "../app/api/lookup/route.js";
 import { GET as searchGET } from "../app/api/search/route.js";
 import { GET as casesGET } from "../app/api/cases/route.js";
 import { GET as exportGET } from "../app/api/cases/[id]/export/route.js";
+
+// These tests assert the corpus-ABSENT degradation contract, so they only
+// run while data/corpus.sqlite is missing (e.g. pre-build, or mid-rebuild).
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const HAS_CORPUS = existsSync(path.join(REPO, "data", "corpus.sqlite"));
 
 let dir = "";
 let appDb = "";
@@ -42,7 +49,7 @@ async function bodyJson(r: Response): Promise<{ status: number; json: unknown }>
   }
 }
 
-test("lookup without corpus answers 503 JSON, not HTML", async () => {
+test("lookup without corpus answers 503 JSON, not HTML", { skip: HAS_CORPUS }, async () => {
   const { status, json } = await bodyJson(
     await lookupGET(new Request("http://x/api/lookup?cite=410%20U.S.%20113"))
   );
@@ -59,9 +66,12 @@ test("lookup validates input before touching any DB", async () => {
   assert.equal(huge.status, 400);
 });
 
-test("search without corpus answers 503 JSON; empty q is 400", async () => {
+test("search without corpus answers 503 JSON", { skip: HAS_CORPUS }, async () => {
   const { status } = await bodyJson(await searchGET(new Request("http://x/api/search?q=test")));
   assert.equal(status, 503);
+});
+
+test("search with empty q is 400 with or without a corpus", async () => {
   const bad = await bodyJson(await searchGET(new Request("http://x/api/search?q=")));
   assert.equal(bad.status, 400);
 });
