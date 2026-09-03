@@ -102,6 +102,27 @@ export interface BridgeCitation {
   error?: string;
 }
 
+/**
+ * Transport-failure entry shared by both bridges. A dead eyecite process
+ * must fail the DRAFT (via the bridge_error → unresolved_citation mapping
+ * in analyzeCitationsAndQuotes), never the pipeline with an escaping
+ * exception — identical shape from sync and async paths.
+ */
+export function bridgeErrorEntry(detail: string): BridgeCitation {
+  return {
+    text: "",
+    corrected: "",
+    volume: null,
+    reporter: null,
+    page: null,
+    type: "bridge_error",
+    pin_cite: null,
+    start: 0,
+    end: 0,
+    error: detail.slice(0, 200),
+  };
+}
+
 export function treatmentLabels(flags: number | null | undefined): string[] {
   if (!flags) return [];
   return TREATMENT_LABELS.filter((t) => flags & t.bit).map((t) => t.label);
@@ -200,7 +221,9 @@ function findTrueSource(
       if (seen.has(id)) continue;
       seen.add(id);
       const meta = db
-        .prepare("SELECT id, cluster_id, case_name, court_id FROM opinions WHERE id = ?")
+        // §9.7: de-indexed opinions must never surface, even as
+        // true-source attribution for a rejected quote.
+        .prepare("SELECT id, cluster_id, case_name, court_id FROM opinions WHERE id = ? AND blocked = 0")
         .get(id) as
         | { id: number; cluster_id: number; case_name: string; court_id: string }
         | undefined;
@@ -253,7 +276,9 @@ function ftsPhraseExpr(terms: string[]): string {
 export interface AnalyzeOptions {
   /** Char ranges (e.g. [RECORD] sentences) whose quoted spans are the
    *  client's own facts, not corpus claims — quote checks are skipped for
-   *  any span intersecting a range. Citations inside them still resolve. */
+   *  spans FULLY INSIDE a range. A span merely touching a range boundary
+   *  is still checked: a quote opened in argued text must never launder
+   *  through a neighboring RECORD sentence. Citations resolve everywhere. */
   skipQuoteRanges?: Array<[number, number]>;
 }
 
@@ -263,7 +288,7 @@ function inSkippedRange(
   ranges: Array<[number, number]> | undefined
 ): boolean {
   if (!ranges || ranges.length === 0) return false;
-  return ranges.some(([a, b]) => start < b && end > a);
+  return ranges.some(([a, b]) => start >= a && end <= b);
 }
 
 /**
@@ -326,11 +351,14 @@ export function analyzeCitationsAndQuotes(
       });
       continue;
     }
+    // Pin pages ride through: resolveCluster normalizes to leading digits
+    // ("113-114" → "113"). Never strip non-digits first — that mangles a
+    // range into a different page ("113-114" → "113114", unresolvable).
     const res: LookupResult | null = resolveCluster(
       db,
       c.volume ?? "",
       c.reporter ?? "",
-      (c.page ?? "").replace(/[^\d]/g, "") || c.page || ""
+      c.page ?? ""
     );
     if (!res) {
       citations.push({

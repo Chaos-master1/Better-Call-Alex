@@ -16,7 +16,7 @@
 
 import { generate } from "../llm.js";
 import type Database from "better-sqlite3";
-import { search, extractPassage, type SearchHit } from "../retrieval/search.js";
+import { search, extractPassage, matchJurisdiction, type SearchHit } from "../retrieval/search.js";
 
 // =====================================================================
 // 1. INTAKE
@@ -151,11 +151,20 @@ export async function researcherAgent(
     );
   }
   // Run retrieval for each query. Hits aggregated, deduped by cluster_id.
+  // The intake forum filters retrieval when it resolves to real courts
+  // (ADR-002); an unresolvable forum falls back to unfiltered rather than
+  // empty — lost recall is safer than zero results, and the verifier
+  // still gates every citation.
+  const forum =
+    intake.jurisdiction && intake.jurisdiction.trim()
+      ? matchJurisdiction(db, intake.jurisdiction.trim())
+      : null;
+  const scope = forum && forum.size > 0 ? { jurisdictionIds: forum } : {};
   const allHits: SearchHit[] = [];
   const seen = new Set<number>();
   const top_picks: ResearcherOutput["top_picks"] = [];
   for (const q of queries) {
-    const hits = search(db, q.q, { limit: 8 });
+    const hits = search(db, q.q, { limit: 8, ...scope });
     top_picks.push({ q: q.q, hit: hits[0] ?? null });
     for (const h of hits) {
       const k = h.cluster_id ?? h.opinion_id;
@@ -431,7 +440,8 @@ export function negativeTreatmentHits(
     .filter((t) => t.length > 3 && t !== "the")
     .slice(0, 6);
   const metaStmt = db.prepare(
-    "SELECT id, cluster_id, case_name, case_name_short, date_filed, court_id, precedential_status, ocr FROM opinions WHERE id = ?"
+    // §9.7: a de-indexed opinion must never be offered as counter-authority.
+    "SELECT id, cluster_id, case_name, case_name_short, date_filed, court_id, precedential_status, ocr FROM opinions WHERE id = ? AND blocked = 0"
   );
   const textStmt = db.prepare("SELECT text FROM opinions WHERE id = ?");
   const hits: SearchHit[] = [];

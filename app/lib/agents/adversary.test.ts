@@ -4,6 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +43,32 @@ test("negative-treatment fallback returns nothing without a cluster", () => {
   const db = openCorpus();
   try {
     assert.equal(negativeTreatmentHits(db, null, "anything", 5).length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test("negative-treatment fallback never names a de-indexed (blocked) opinion (§9.7)", () => {
+  const db = new Database(":memory:");
+  try {
+    db.exec(
+      `CREATE TABLE opinions (id INTEGER PRIMARY KEY, cluster_id INTEGER,
+        case_name TEXT, case_name_short TEXT, date_filed TEXT, court_id TEXT,
+        precedential_status TEXT, ocr INTEGER, blocked INTEGER DEFAULT 0, text TEXT)`
+    );
+    db.exec(
+      `CREATE TABLE cites (citing_id INTEGER, cited_id INTEGER, depth INTEGER,
+        char_pos INTEGER, context TEXT)`
+    );
+    db.exec(`CREATE TABLE authority (opinion_id INTEGER, treatment_flags INTEGER)`);
+    db.exec(
+      `INSERT INTO opinions (id, cluster_id, case_name, blocked, text)
+       VALUES (1, 100, 'Cited Case', 0, 'the cited opinion text here'),
+              (2, 200, 'Blocked Citer', 1, 'we overruled the prior holding entirely in this matter')`
+    );
+    db.exec(`INSERT INTO cites (citing_id, cited_id, context) VALUES (2, 1, 'we overruled the prior holding')`);
+    const hits = negativeTreatmentHits(db, 100, "overruled prior holding matter", 5);
+    assert.equal(hits.length, 0);
   } finally {
     db.close();
   }

@@ -63,11 +63,52 @@ export interface RenderedDraft {
   overall: "pass" | "fail";
 }
 
-/** §5.3 gate: every sentence MUST be tagged. Untagged = reject. */
+/** §5.3 gate: every sentence MUST carry a known tag. Unknown or missing =
+ *  reject. A truthiness check is not enough: an unknown tag would otherwise
+ *  be emitted into the draft as "[FOO]" and bypass every tag-dependent rule. */
 function gateTags(sentences: TaggedSentence[]): void {
   for (const [i, s] of sentences.entries()) {
-    if (!s.tag) throw new Error(`[verify] sentence ${i} is untagged (CLAUDE.md §5.3)`);
+    if (s.tag !== "RECORD" && s.tag !== "LAW" && s.tag !== "INFERRED") {
+      throw new Error(`[verify] sentence ${i} has bad tag ${JSON.stringify((s as { tag?: unknown })?.tag)} (CLAUDE.md §5.3)`);
+    }
   }
+}
+
+/** Content tokens for RECORD grounding: lowercase alphanumerics, len ≥ 2. */
+function contentTokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2);
+}
+
+/**
+ * RECORD confinement (P0-1 fix). The skipQuoteRanges exemption trusts the
+ * sentence tag, and the tag comes from model JSON — so a model that labels
+ * argued law as RECORD would launder quotes past the verifier. A RECORD
+ * sentence must share substance with the intake facts; one that does not
+ * is re-tagged INFERRED (labeled reasoning, never verified as fact, never
+ * silently dropped). Non-RECORD sentences pass through untouched.
+ * Returns the confined sentences plus the re-tag count for the audit log.
+ */
+export function confineRecordSentences(
+  sentences: TaggedSentence[],
+  intakeFacts: string
+): { sentences: TaggedSentence[]; retagged: number } {
+  const factTokens = new Set(contentTokens(intakeFacts));
+  let retagged = 0;
+  const out = sentences.map((s) => {
+    if (s.tag !== "RECORD") return s;
+    const toks = contentTokens(s.text);
+    // Too short to judge: keep. Citations inside still resolve; a LAW
+    // claim without a pin still fails at cross-reference.
+    if (toks.length < 3) return s;
+    const hit = toks.filter((t) => factTokens.has(t)).length;
+    if (hit / toks.length >= 0.4) return s;
+    retagged++;
+    return { ...s, tag: "INFERRED" as const };
+  });
+  return { sentences: out, retagged };
 }
 
 /** Build the draft text. The pin cite rides as a parenthetical so eyecite
@@ -140,16 +181,23 @@ function crossReference(
 
 /**
  * Async variant — does not block the event loop (preferred for the server).
+ * `intakeFacts` grounds RECORD confinement; omit it only when the caller
+ * has no intake (evals), in which case RECORD sentences pass unconfined.
  */
 export async function verifyTaggedSentencesAsync(
   db: Database.Database,
-  sentences: TaggedSentence[]
+  sentences: TaggedSentence[],
+  intakeFacts?: string
 ): Promise<RenderedDraft> {
   gateTags(sentences);
-  const draft = buildDraft(sentences);
-  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, sentences) };
+  const confined =
+    intakeFacts != null
+      ? confineRecordSentences(sentences, intakeFacts).sentences
+      : sentences;
+  const draft = buildDraft(confined);
+  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, confined) };
   const report = await verifyTextAsync(db, draft, opts);
-  return crossReference(draft, sentences, report);
+  return crossReference(draft, confined, report);
 }
 
 /**
@@ -159,13 +207,18 @@ export async function verifyTaggedSentencesAsync(
  */
 export function verifyTaggedSentences(
   db: Database.Database,
-  sentences: TaggedSentence[]
+  sentences: TaggedSentence[],
+  intakeFacts?: string
 ): RenderedDraft {
   gateTags(sentences);
-  const draft = buildDraft(sentences);
-  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, sentences) };
+  const confined =
+    intakeFacts != null
+      ? confineRecordSentences(sentences, intakeFacts).sentences
+      : sentences;
+  const draft = buildDraft(confined);
+  const opts: AnalyzeOptions = { skipQuoteRanges: recordCharRanges(draft, confined) };
   const report = verifyText(db, draft, opts);
-  return crossReference(draft, sentences, report);
+  return crossReference(draft, confined, report);
 }
 
 /**

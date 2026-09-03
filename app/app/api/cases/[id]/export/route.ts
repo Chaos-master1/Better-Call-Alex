@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
 import type Database from "better-sqlite3";
 import { audit, openApp } from "../../../../../lib/app_db";
-import { openCorpus, resolveCluster } from "../../../../../lib/db";
-import { parseCitation } from "../../../../../lib/citation";
-import {
-  parseStatuteCites,
-  resolveStatute,
-  statuteTableExists,
-} from "../../../../../lib/statute";
+import { openCorpus } from "../../../../../lib/db";
 import type { DraftDoc } from "../../../../../lib/draft";
 import {
   buildMotionDocx,
   exportFilename,
   planMotionParagraphs,
 } from "../../../../../lib/export_docx";
+import {
+  collectExportCandidates,
+  resolvesCitation,
+} from "../../../../../lib/resolve_cite";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,10 +20,11 @@ export const maxDuration = 60;
  * G5 motion export: GET /api/cases/[id]/export → .docx download.
  *
  * The G5 gate ("every citation in the exported file resolves") is enforced
- * HERE in code, not observed after the fact: every appendix citation and
- * every sentence pin cite is re-resolved against the corpus before any
- * bytes are built. Anything unresolvable fails closed with 409 naming the
- * offenders — the file is never emitted with a bad cite inside it.
+ * HERE in code, not observed after the fact: appendix citations, sentence
+ * pin cites, AND inline cites mined from the IRAC/counter-argument/caveat
+ * free text are all re-resolved against the corpus before any bytes are
+ * built. Anything unresolvable fails closed with 409 naming the offenders
+ * — the file is never emitted with a bad cite inside it.
  * Unverified sentences that carry NO resolvable citation form (e.g. a bare
  * "§ 1983" short form, LAW-without-pin) are still exported struck-through
  * per §3 — the gate covers citations, the strike covers the rest.
@@ -79,7 +78,10 @@ export async function GET(
     }
 
     // ——— resolve gate: every exported citation must resolve ———
-    let corpus;
+    // Candidates cover the whole file (appendix + pins + IRAC/counter
+    // inline cites) via the shared resolve_cite module — the same code
+    // evals/run_g5.ts runs, so the gate cannot drift between the two.
+    let corpus: Database.Database;
     try {
       corpus = openCorpus();
     } catch {
@@ -92,16 +94,8 @@ export async function GET(
       );
     }
     try {
-      const candidates = new Set<string>();
-      for (const a of drafted.authority_appendix ?? []) {
-        if (a.citation) candidates.add(a.citation);
-      }
-      for (const s of drafted.sentences ?? []) {
-        if (s.pin_cite) candidates.add(s.pin_cite);
-      }
-      const unresolvable = [...candidates].filter(
-        (c) => !resolves(corpus, c)
-      );
+      const candidates = collectExportCandidates(drafted);
+      const unresolvable = candidates.filter((c) => !resolvesCitation(corpus, c));
       if (unresolvable.length > 0) {
         return NextResponse.json(
           {
@@ -149,20 +143,4 @@ export async function GET(
   } finally {
     app.close();
   }
-}
-
-/** Strip a pin page ("456 U.S. 798, 800" → "456 U.S. 798") then resolve as
- *  a case cite first, a full-form statute cite second. */
-function resolves(corpus: Database.Database, cite: string): boolean {
-  const base = cite.split(",")[0].trim();
-  const parsed = parseCitation(base);
-  if (parsed && resolveCluster(corpus, parsed.volume, parsed.reporter, parsed.page)) {
-    return true;
-  }
-  if (statuteTableExists(corpus)) {
-    for (const s of parseStatuteCites(cite)) {
-      if (resolveStatute(corpus, s.source, s.title, s.section)) return true;
-    }
-  }
-  return false;
 }

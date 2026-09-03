@@ -26,6 +26,7 @@ import type Database from "better-sqlite3";
 import { resolveRepo } from "../repo.js";
 import {
   analyzeCitationsAndQuotes,
+  bridgeErrorEntry,
   type AnalyzeOptions,
   type BridgeCitation,
   type VerificationReport,
@@ -56,7 +57,12 @@ function runBridge(text: string): BridgeCitation[] {
   if (proc.status !== 0) {
     throw new Error(`eyecite bridge failed (${proc.status}): ${proc.stderr?.slice(-400)}`);
   }
-  const payload = JSON.parse(proc.stdout!) as { results: BridgeCitation[][]; error?: string };
+  let payload: { results: BridgeCitation[][]; error?: string };
+  try {
+    payload = JSON.parse(proc.stdout!) as { results: BridgeCitation[][]; error?: string };
+  } catch {
+    return [bridgeErrorEntry(`bridge non-JSON output: ${String(proc.stdout ?? "")}`)];
+  }
   if (payload.error) throw new Error(`bridge protocol: ${String(payload.error)}`);
   // Error entries ride through to the core, which surfaces them as
   // `unresolved_citation` — unverifiable content is reported, never

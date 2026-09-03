@@ -62,6 +62,24 @@ test("ellipsis with a missing fragment does NOT match", () => {
   assert.equal(findQuote(text, "alpha beta ... delta omega zeta.").found, false);
 });
 
+test("bracket/paren ellipsis variants match like ... does", () => {
+  const text =
+    "The right of privacy is fundamental and applies to the states through due process.";
+  assert.equal(
+    findQuote(text, "The right of privacy [...] applies to the states through due process.").found,
+    true
+  );
+  assert.equal(
+    findQuote(text, "The right of privacy (...) applies to the states through due process.").found,
+    true
+  );
+});
+
+test("bracket ellipsis with a missing fragment does NOT match", () => {
+  const text = "alpha beta gamma delta epsilon zeta.";
+  assert.equal(findQuote(text, "alpha beta [...] delta omega zeta.").found, false);
+});
+
 test("empty quote never matches", () => {
   assert.equal(findQuote("anything", "   ").found, false);
 });

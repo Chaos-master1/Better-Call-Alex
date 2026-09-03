@@ -2,40 +2,24 @@
  * G5 verification runner: motion end to end (CLAUDE.md §8 G5).
  *
  * Loads the latest drafted run for a case from data/app.sqlite, runs the
- * SAME resolve gate the export route enforces (every appendix citation and
- * every sentence pin cite must resolve in data/corpus.sqlite — fail closed),
- * builds the .docx bytes, and writes them to logs/g5-motion.docx.
+ * SAME resolve gate the export route enforces (every citation the .docx
+ * will contain — appendix, pins, IRAC/counter inline cites — must resolve
+ * in data/corpus.sqlite, fail closed), builds the .docx bytes, and writes
+ * them to logs/g5-motion.docx.
  *
  * Usage: tsx ../evals/run_g5.ts [--case 32] [--out logs/g5-motion.docx]
  * Exit non-zero (and no file) when any citation fails to resolve — that is
  * the gate working, not the harness failing.
  */
-import { openCorpus, resolveCluster } from "../app/lib/db.js";
-import { parseCitation } from "../app/lib/citation.js";
-import {
-  parseStatuteCites,
-  resolveStatute,
-  statuteTableExists,
-} from "../app/lib/statute.js";
+import { openCorpus } from "../app/lib/db.js";
 import { openApp } from "../app/lib/app_db.js";
 import type { DraftDoc } from "../app/lib/draft.js";
 import { buildMotionDocx } from "../app/lib/export_docx.js";
+import {
+  collectExportCandidates,
+  resolvesCitation,
+} from "../app/lib/resolve_cite.js";
 import { writeFileSync, existsSync } from "node:fs";
-import type Database from "better-sqlite3";
-
-function resolves(corpus: Database.Database, cite: string): boolean {
-  const base = cite.split(",")[0].trim();
-  const parsed = parseCitation(base);
-  if (parsed && resolveCluster(corpus, parsed.volume, parsed.reporter, parsed.page)) {
-    return true;
-  }
-  if (statuteTableExists(corpus)) {
-    for (const s of parseStatuteCites(cite)) {
-      if (resolveStatute(corpus, s.source, s.title, s.section)) return true;
-    }
-  }
-  return false;
-}
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(name);
@@ -69,14 +53,10 @@ async function main(): Promise<void> {
 
   const corpus = openCorpus();
   try {
-    const candidates = new Set<string>();
-    for (const a of drafted.authority_appendix ?? []) {
-      if (a.citation) candidates.add(a.citation);
-    }
-    for (const s of drafted.sentences ?? []) {
-      if (s.pin_cite) candidates.add(s.pin_cite);
-    }
-    const checked = [...candidates].map((c) => ({ cite: c, ok: resolves(corpus, c) }));
+    // Same gate the export route enforces, from the shared module — one
+    // implementation, so the two cannot drift apart.
+    const candidates = collectExportCandidates(drafted);
+    const checked = candidates.map((c) => ({ cite: c, ok: resolvesCitation(corpus, c) }));
     const bad = checked.filter((c) => !c.ok);
     console.log(JSON.stringify({
       case_id: caseId,

@@ -28,6 +28,7 @@ import { useModel, RESIDENT_MODEL, ANALYST_MODEL } from "../llm.js";
 import {
   verifyTaggedSentences,
   verifyTaggedSentencesAsync,
+  confineRecordSentences,
   type RenderedDraft,
   type TaggedSentence,
 } from "../render.js";
@@ -98,17 +99,23 @@ export async function runCase(
       ...analyst.tagged_sentences,
       ...adversary.tagged_sentences,
     ];
+    // RECORD confinement runs here for the audit count AND inside the
+    // verify fns (idempotent second pass) so the gate holds for all
+    // callers, not just this orchestrator.
+    const intakeFacts = [...intake.facts, ...intake.claims].join(" ");
+    const { sentences: confined, retagged } = confineRecordSentences(combined, intakeFacts);
     // Use async bridge when an event loop is present (server); fall back to sync
     // for the CLI where top-level await is not needed. The sync path is still
     // the canonical one for evals; this path just avoids blocking.
     const draft = process.env.ALEX_VERIFY_SYNC === "1"
-      ? verifyTaggedSentences(corpus, combined)
-      : await verifyTaggedSentencesAsync(corpus, combined);
+      ? verifyTaggedSentences(corpus, confined, intakeFacts)
+      : await verifyTaggedSentencesAsync(corpus, confined, intakeFacts);
     audit(appDb, "verifier.run", {
       caseId,
       overall: draft.overall,
       sentences: draft.sentences.length,
       verified: draft.sentences.filter((s) => s.verified).length,
+      record_retagged: retagged,
     }, caseId);
 
     // 5. drafter template (pure, no LLM) — banner applied in code per §11

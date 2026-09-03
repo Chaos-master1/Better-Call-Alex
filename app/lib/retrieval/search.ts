@@ -31,6 +31,8 @@ export interface SearchHit {
 export interface SearchOptions {
   /** court_id, jurisdiction string, or parent court whose subtree is included */
   jurisdiction?: string;
+  /** pre-resolved court set (researcher path) — preferred over `jurisdiction` */
+  jurisdictionIds?: Set<string>;
   /** results to return (default 10) */
   limit?: number;
 }
@@ -199,6 +201,47 @@ function jurisdictionCourtIds(
   return new Set(rows.map((r) => r.id));
 }
 
+/**
+ * Resolve free-text forum ("California", "9th Circuit", "cal") to a court
+ * set for filtering. Exact id/jurisdiction/citation-string match first
+ * (the CLI path); otherwise a case-insensitive court-NAME match plus the
+ * same subtree walk. Returns null when nothing matches — the caller falls
+ * back to unfiltered search rather than an empty set, because an
+ * unresolvable forum string must cost recall, never all results
+ * (jurisdictionCourtIds feeds `return []` on empty, which is correct for
+ * an explicit CLI filter but wrong for model-supplied intake text).
+ */
+export function matchJurisdiction(
+  db: Database.Database,
+  text: string
+): Set<string> | null {
+  const exact = jurisdictionCourtIds(db, text);
+  if (exact.size > 0) return exact;
+  const like = `%${text.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
+  let seeds: Array<{ id: string }>;
+  try {
+    seeds = db
+      .prepare(`SELECT id FROM courts WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE`)
+      .all(like) as Array<{ id: string }>;
+  } catch {
+    return null;
+  }
+  if (seeds.length === 0) return null;
+  const out = new Set<string>();
+  const walk = db.prepare(
+    `WITH RECURSIVE cs(id) AS (
+       SELECT id FROM courts WHERE id = ?
+       UNION ALL
+       SELECT c.id FROM courts c JOIN cs ON c.parent_id = cs.id
+     )
+     SELECT id FROM cs`
+  );
+  for (const s of seeds.slice(0, 25)) {
+    for (const r of walk.all(s.id) as Array<{ id: string }>) out.add(r.id);
+  }
+  return out.size > 0 ? out : null;
+}
+
 interface PoolRow {
   id: number;
   bm25: number;
@@ -331,9 +374,10 @@ export function search(
   if (!expr) return [];
 
   const courts =
-    opts.jurisdiction != null
+    opts.jurisdictionIds ??
+    (opts.jurisdiction != null
       ? jurisdictionCourtIds(db, opts.jurisdiction)
-      : null;
+      : null);
   if (courts && courts.size === 0) return [];
 
   const statusMarks = SEARCHABLE_STATUS.map(() => "?").join(",");

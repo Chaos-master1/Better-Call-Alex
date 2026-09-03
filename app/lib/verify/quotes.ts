@@ -82,7 +82,10 @@ function locate(
   return { start: hay.map[j], end: hay.map[j + needleNorm.length - 1] + 1 };
 }
 
-const ELLIPSIS_SPLIT = /(?:\u2026|\.\.\.|\[\u2026\])/;
+// Legal elision marks: … ... […] (...) (…) — single-quote spans are
+// deliberately NOT extracted (apostrophes collide: "plaintiff's motion"
+// between two possessives would fake a span and fail closed on real text).
+const ELLIPSIS_SPLIT = /(?:\u2026|\.\.\.|\[\u2026\]|\(\u2026\)|\[\.\.\.\]|\(\.\.\.\))/;
 
 export function findQuote(text: string, quote: string): QuoteResult {
   if (!quote.trim()) return { found: false };
