@@ -36,6 +36,9 @@ Quality gate: `pnpm eval` (golden set, precision@10). Latency gate:
    - `blocked = 0` excluded (§9.7 de-indexing honored).
    - jurisdiction: court subtree via recursive CTE over
      `courts.id / jurisdiction / citation_string → parent_id` children.
+     The pipeline forwards `intake.jurisdiction` through
+     `matchJurisdiction()` (exact match, else court-NAME match + walk;
+     unresolvable forum → unfiltered, never empty — ADR-002).
 4. **Adaptive pool escalation**: pools of 1,000 → 20,000 until the
    filtered pool holds ≥ limit distinct clusters. Escalation exists because a
    global top-200 starves narrow jurisdictions (CA published-in-top-200 was
@@ -64,8 +67,9 @@ Quality gate: `pnpm eval` (golden set, precision@10). Latency gate:
 7. **Cluster dedupe**: one result per cluster (a case's lead/dissent/
    concurrence must not crowd out other authority); best-scoring opinion wins.
 8. **Passages with char offsets**: for each returned opinion, the densest
-   window (~600 chars) of query-term occurrences in stored text; `start` is an
-   exact character offset usable for pin cites and quote verification later.
+   window (~600 chars) of query-term occurrences; `text[start:end] ===
+   text` holds exactly (offsets index the returned, whitespace-collapsed
+   passage — display provenance, not a slice into raw stored text).
 
 ## Determinism
 
