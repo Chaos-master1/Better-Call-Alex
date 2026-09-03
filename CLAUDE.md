@@ -70,7 +70,9 @@ cites(citing_id, cited_id, depth, char_pos, context)          -- ~132 M rows
 citation_strings(cluster_id, volume, reporter, page, type)     -- "410 U.S. 113"
 parentheticals(described_id, describing_id, text, score)
 parentheticals_fts  -- FTS5
-courts(id PK, name, jurisdiction, citation_string, parent_id, level)
+courts(id PK, name, jurisdiction, citation_string, parent_id)
+# no `level`: designed, never populated, nothing reads it (removed Phase 2
+# rather than filled with invented values; the walk uses parent_id)
 judges(id PK, name_first, name_last, fjc_id)
 statutes(source, title, section, heading, text, effective_date)      -- G4
 authority(opinion_id PK, pagerank, recent_cites_2y, treatment_flags) -- batch
@@ -95,7 +97,7 @@ compiled without the FTS5 extension, which this design depends on twice. Use
 3. BM25 over `parentheticals_fts` in parallel. These are judge-written "(holding
    that…)" summaries of other cases — a small, very high-precision index. This is
    the highest-value retrieval asset in the corpus.
-4. Re-score: `bm25 × authority(pagerank, recency, court level)`.
+4. Re-score: `bm25 × authority(pagerank, recency, scotus boost, parenthetical hits)`.
 5. Return **passages with character offsets**, never whole opinions. Offsets are
    what make every citation pin, and they keep the local model inside 32k context.
 
@@ -250,7 +252,7 @@ snapshot. ~6 GB total.
 | `citation-map-2026-06-30.csv.bz2` | 502 MB | `search_opinionscited(cited_opinion_id, citing_opinion_id, depth)` — the citator. |
 | `citations-2026-06-30.csv.bz2` | 121 MB | `search_citation(volume, reporter, page, cluster_id)`. Nothing on disk contains the string "410 U.S. 113". |
 | `parentheticals-2026-06-30.csv.bz2` | 275 MB | Judge-written holdings. Drives retrieval step 3. |
-| `courts-` + `courthouses-` | 0.1 MB | Jurisdiction hierarchy. |
+| `courts-` (+ `people-db-*`, `schema-*.sql`) | 0.1 MB | Jurisdiction hierarchy (`courthouses-` exists upstream but no stage reads it — deliberately not fetched). |
 | `people-db-*` | ~2 MB | Judges. `opinions.author_id` is currently a dangling FK. |
 | `schema-2026-06-30.sql` | 0.47 MB | Authoritative column definitions. |
 | `fjc-integrated-database-` | 267 MB | Optional. Federal outcome base rates. |
