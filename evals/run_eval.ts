@@ -75,7 +75,20 @@ function main() {
     }
     console.log(`\nmean precision@10: ${mean.toFixed(4)} (${results.length} cases)`);
 
-    if (writeBaseline || !existsSync(BASELINE)) {
+    // A missing baseline must fail, not silently record: a clean checkout's
+    // first `pnpm eval` would otherwise inscribe whatever the code currently
+    // does as truth and the gate would prove nothing. Record explicitly with
+    // --write-baseline only.
+    if (!existsSync(BASELINE)) {
+      if (!writeBaseline) {
+        console.error(
+          `no baseline at ${path.relative(REPO, BASELINE)} — refusing to record implicitly. ` +
+            `Run once with --write-baseline to inscribe it deliberately, then re-run to gate.`
+        );
+        process.exit(1);
+      }
+    }
+    if (writeBaseline) {
       mkdirSync(path.dirname(BASELINE), { recursive: true });
       writeFileSync(
         BASELINE,

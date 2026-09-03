@@ -20,7 +20,7 @@ import {
 import { openApp } from "../app/lib/app_db.js";
 import type { DraftDoc } from "../app/lib/draft.js";
 import { buildMotionDocx } from "../app/lib/export_docx.js";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 
 function resolves(corpus: Database.Database, cite: string): boolean {
@@ -93,6 +93,14 @@ async function main(): Promise<void> {
   }
 
   const buf = await buildMotionDocx(drafted);
+  // Evidence guard: logs/g5-motion.docx is committed gate evidence. Refuse
+  // to overwrite it implicitly — pass --out <other-path> or --force.
+  if (existsSync(outPath) && !process.argv.includes("--force")) {
+    console.error(
+      `refusing to overwrite existing ${outPath} — pass --out <other-path> or --force`
+    );
+    process.exit(1);
+  }
   writeFileSync(outPath, buf);
   console.log(`wrote ${outPath} (${buf.length} bytes)`);
 }

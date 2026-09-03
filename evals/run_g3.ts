@@ -172,6 +172,9 @@ async function main() {
       }
     }
 
+    const skipped = results.filter((r) =>
+      String(r.status ?? "").startsWith("skipped")
+    ).length;
     const report = {
       generated_at: new Date().toISOString(),
       offline: OFFLINE,
@@ -179,9 +182,22 @@ async function main() {
       results,
       overall: allPass ? "pass" : "fail",
     };
-    mkdirSync(path.dirname(OUT), { recursive: true });
-    writeFileSync(OUT, JSON.stringify(report, null, 2));
-    console.log(`\nG3 report → ${path.relative(REPO, OUT)}  overall=${report.overall}`);
+    // Evidence guard: logs/g3-report.json is committed live-pass evidence.
+    // An --offline run or a run with model-missing skips proves nothing about
+    // the live pipeline, so it must never overwrite that file (it once did).
+    // Such runs write to a sidecar path instead.
+    const outPath =
+      !OFFLINE && skipped === 0
+        ? OUT
+        : OUT.replace(/\.json$/, OFFLINE ? ".offline.json" : ".partial.json");
+    mkdirSync(path.dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(report, null, 2));
+    console.log(`\nG3 report → ${path.relative(REPO, outPath)}  overall=${report.overall}`);
+    if (outPath !== OUT) {
+      console.log(
+        "note: not live evidence (offline mode or skipped patterns) — committed logs/g3-report.json untouched"
+      );
+    }
     if (!allPass) process.exit(1);
     console.log("G3 GATE: PASS — five patterns gated (or skipped offline) correctly");
   } finally {
