@@ -13,13 +13,16 @@ Stages (each resumable, run in order):
   pagerank  dedupe edges, power iteration on scipy.sparse CSR over all
             opinion ids (dangling mass redistributed uniformly)
   write     bulk-insert pagerank + recent_cites_2y + treatment_flags
+  reflag    re-scan cites.context with the current scanner and refresh
+            authority.treatment_flags wholesale (clears stale flags) —
+            no edge/pagerank recompute
 
 Recency anchor: SNAPSHOT_CUTOFF (2026-06-30 minus 2y), deterministic — §5.7.
-Treatment bits: 1 overrul*-family (overrul*, abrogat*, disapprov*, supersed*,
+Treatment bits: 1 overrul*-family (overrul*, disapprov*, supersed*,
                  "depart* from", "no longer good law/controlling/followed/
                  valid" — extended 2026-08-24 against the LegalBench/Casetext
                  Overruling set: recall .525 -> .774 at FPR .011 -> .014),
-                4 distinguish*, 8 "but see", 16 "declined to follow".
+                2 abrogat*, 4 distinguish*, 8 "but see", 16 "declined to follow".
 ("reject" was tested and deliberately excluded: +2pp recall cost +1.3pp FPR.)
 """
 
@@ -230,6 +233,9 @@ def pagerank_arrays(nodes, src, dst, alpha=0.85, tol=1e-5, max_iter=150,
     for it in range(max_iter):
         dang = float(r[dangling].sum(dtype=np.float64))
         rn = alpha * (adj_t @ r + dang / n) + (1.0 - alpha) / n
+        # The float64 scalar promotes the sum: cast back every iteration so
+        # the "float32 throughout" budget (~43 MB, not ~86 MB) actually holds.
+        rn = np.asarray(rn, dtype=np.float32)
         err = float(np.abs(rn - r).sum(dtype=np.float64))
         r = rn
         if verbose:
@@ -277,12 +283,22 @@ def write_stage(conn, outdir=AUTH_DIR):
     recent = np.zeros(len(nodes), dtype=np.int32)
     mask = sd >= SNAPSHOT_CUTOFF
     tgt = np.searchsorted(nodes, dst[mask])
+    # Membership guard: a stale edge id must index nothing, not the wrong
+    # row. (Edges are valid by construction from scan; this is the
+    # one-line insurance against an IndexError hours into the write.)
+    if len(nodes):
+        tgt = tgt[(tgt < len(nodes)) & (nodes[np.minimum(tgt, len(nodes) - 1)] == dst[mask])]
+    else:
+        tgt = tgt[:0]
     np.add.at(recent, tgt, 1)
 
     tr = np.load(outdir / "treatment.npz")
     tflags = np.zeros(len(nodes), dtype=np.int32)
     ti = np.searchsorted(nodes, tr["ids"])
-    tflags[ti] = tr["vals"]
+    if len(nodes):
+        ok = (ti < len(nodes)) & (nodes[np.minimum(ti, len(nodes) - 1)] == tr["ids"])
+        tflags[ti[ok]] = tr["vals"][ok]
+    # else: empty corpus — tflags stays zeros; no index is valid.
 
     conn.commit()
     conn.execute("PRAGMA journal_mode=WAL")
@@ -368,32 +384,45 @@ def reflag_stage(conn, outdir=AUTH_DIR):
 
     print(f"[reflag] scanned cites in {(time.time()-t0)/60:.1f} min; "
           f"{len(flags):,} flagged opinions")
+    # Apply via temp table + full refresh (not UPDATE-only): a narrowed
+    # scanner must CLEAR stale flags, not just set new ones, and orphan
+    # cited_ids (no authority row) must affect nothing. treatment.npz is
+    # rewritten too so write_stage stays consistent with authority.
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("DROP TABLE IF EXISTS _reflag")
+    conn.execute("CREATE TEMP TABLE _reflag (opinion_id INTEGER PRIMARY KEY, flags INTEGER)")
     batch = []
-    n_upd = 0
     for oid, b in sorted(flags.items()):
-        batch.append((b, oid))
+        batch.append((oid, b))
         if len(batch) >= 100_000:
-            conn.executemany(
-                "UPDATE authority SET treatment_flags=? WHERE opinion_id=?", batch)
-            n_upd += len(batch)
-            conn.commit()
+            conn.executemany("INSERT OR REPLACE INTO _reflag VALUES (?, ?)", batch)
             batch.clear()
     if batch:
-        conn.executemany(
-            "UPDATE authority SET treatment_flags=? WHERE opinion_id=?", batch)
-        n_upd += len(batch)
-        conn.commit()
+        conn.executemany("INSERT OR REPLACE INTO _reflag VALUES (?, ?)", batch)
+    conn.execute("""
+        UPDATE authority
+           SET treatment_flags = COALESCE(
+                 (SELECT flags FROM _reflag WHERE opinion_id = authority.opinion_id), 0)
+    """)
+    conn.commit()
+    conn.execute("DROP TABLE _reflag")
+    conn.commit()
+    np.savez_compressed(outdir / "treatment.npz",
+                        ids=np.asarray(sorted(flags), dtype=np.int64),
+                        vals=np.asarray([flags[k] for k in sorted(flags)],
+                                        dtype=np.int32))
 
     n_flag = conn.execute(
         "SELECT count(*) FROM authority WHERE treatment_flags > 0").fetchone()[0]
     n_ovr = conn.execute(
         "SELECT count(*) FROM authority WHERE treatment_flags & 1 = 1").fetchone()[0]
+    n_cleared = conn.execute(
+        "SELECT count(*) FROM authority WHERE treatment_flags = 0").fetchone()[0]
     summary = {
-        "rows_updated": n_upd,
         "flagged_total": int(n_flag),
         "overruled_family_total": int(n_ovr),
+        "unflagged_total": int(n_cleared),
         "minutes": round((time.time() - t0) / 60, 1),
     }
     (outdir / "reflag.summary.json").write_text(json.dumps(summary, indent=2))

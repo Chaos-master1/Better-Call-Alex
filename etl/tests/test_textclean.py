@@ -7,6 +7,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from textclean import clean_html, extract_text, context_window
 
 
+class TestAnchorMultiMention(unittest.TestCase):
+    def test_repeated_cite_keeps_every_position(self):
+        html = (
+            "<p>First mention <a href=\"/opinion/7/x/\">Case X</a> neutrally.</p>"
+            "<p>Later <a href=\"/opinion/7/x/\">Case X</a> was overruled here.</p>"
+        )
+        text, anchors = clean_html(html)
+        self.assertEqual([c for c, _, _ in anchors], [7, 7])
+        self.assertNotEqual(anchors[0][1], anchors[1][1])
+        self.assertEqual(text[anchors[1][1]:anchors[1][2]], "Case X")
+
+    def test_nul_byte_in_source_keeps_text_drops_anchors(self):
+        html = "<p>Safe lead.</p><a href=\"/opinion/9/y/\">Bad\x00cite</a> tail."
+        text, anchors = clean_html(html)
+        self.assertEqual(anchors, [])
+        self.assertIn("Safe lead.", text)
+        self.assertIn("tail.", text)
+
+
 class TestCleanHtml(unittest.TestCase):
     def test_anchor_positions(self):
         html = (
@@ -37,10 +56,13 @@ class TestCleanHtml(unittest.TestCase):
         self.assertIn("B", text)
         self.assertNotIn("comment", text)
 
-    def test_duplicate_anchor(self):
+    def test_duplicate_anchor_keeps_both_positions(self):
+        # Changed contract (Phase 2): every mention keeps its position so a
+        # treatment-bearing second mention survives to the cites context.
         html = "<p><a href=\"/opinion/5/x\">Case A</a> then <a href=\"/opinion/5/x\">Case A</a></p>"
         text, anchors = clean_html(html)
-        self.assertEqual(len(anchors), 1)
+        self.assertEqual(len(anchors), 2)
+        self.assertEqual([c for c, _, _ in anchors], [5, 5])
 
     def test_extract_text_plain(self):
         fields = {"plain_text": "Line one\n   Line two &amp; more", "html": "<p>x</p>"}

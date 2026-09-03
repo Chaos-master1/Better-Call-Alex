@@ -48,6 +48,9 @@ class TestUscParser(unittest.TestCase):
         self.assertEqual(first["heading"], "Civil action for deprivation of rights")
         self.assertIn("under color of any statute", first["text"])
         self.assertIn("Pub. L. 107", first["text"])  # notes ride inside text
+        # ...exactly once: the <note> container must not double-count its
+        # inner <content> (the eCFR parser's container rule, applied here).
+        self.assertEqual(first["text"].count("Pub. L. 107"), 1)
         self.assertIsNone(first["effective_date"])
         second = rows[1]
         self.assertEqual(second["num"], "1985a")
@@ -96,6 +99,58 @@ class TestStatutesTables(unittest.TestCase):
         self.assertIn("title-42.xml", statutes.ecfr_url("2026-08-31", "42"))
         self.assertIn("xml_usc42@119-73.zip", statutes.usc_url("42", "119", "73"))
         self.assertTrue(statutes.section_url("2026-08-31", "42", "1026.36").endswith("?section=1026.36"))
+        # subsection pins are real section ids, not injection
+        self.assertTrue(statutes.section_url("2026-08-31", "42", "1026.36(a)").endswith("?section=1026.36(a)"))
+        with self.assertRaises(SystemExit):
+            statutes.section_url("2026-08-31", "42", "1983 OR 1=1")
+
+
+class TestUscLoadPath(unittest.TestCase):
+    """The archive path load_usc_title walks: zip → member → parse → store.
+    Previously 100% broken (`with` over a returned tuple) with zero coverage
+    because every test stopped at the parser."""
+
+    def _zipped_fixture(self):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("xml_usc42@119-73.xml",
+                         (FIXTURES / "usc-sample.xml").read_bytes())
+        return buf.getvalue()
+
+    def test_zip_member_extraction(self):
+        name, xdata = statutes.zipfile_member(self._zipped_fixture())
+        self.assertTrue(name.endswith(".xml"))
+        self.assertIn(b"<section", xdata)
+
+    def test_load_usc_bytes_stores_both_sections(self):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(statutes.STATUTES_SCHEMA)
+        n = statutes.load_usc_bytes(conn, "42", self._zipped_fixture())
+        self.assertEqual(n, 2)
+        row = conn.execute(
+            "SELECT heading FROM statutes WHERE source='usc' AND title='42' AND section='1983'"
+        ).fetchone()
+        self.assertEqual(row[0], "Civil action for deprivation of rights")
+        conn.close()
+
+    def test_zip_without_xml_member_fails_fast(self):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("readme.txt", "no xml here")
+        with self.assertRaises(SystemExit):
+            statutes.zipfile_member(buf.getvalue())
+
+
+class TestFetchGuards(unittest.TestCase):
+    def test_redirect_is_refused_loudly(self):
+        handler = statutes._NoRedirect()
+        with self.assertRaises(Exception) as cm:
+            handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/")
+        self.assertIn("redirect refused", str(cm.exception))
 
 
 if __name__ == "__main__":

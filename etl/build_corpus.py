@@ -28,6 +28,7 @@ from common import (
     RAW,
     SHARDS,
     CSV_KWARGS,
+    check_width,
     db_connect,
     done_marker,
     find_resync_offset,
@@ -68,7 +69,7 @@ CREATE TABLE opinions (
 CREATE TABLE anchors (
     citing_id INTEGER NOT NULL, cited_id INTEGER NOT NULL,
     char_pos INTEGER, context TEXT,
-    PRIMARY KEY (citing_id, cited_id)
+    PRIMARY KEY (citing_id, cited_id, char_pos)
 ) WITHOUT ROWID;
 """
 
@@ -91,10 +92,15 @@ def stage_clusters_dockets():
     conn.execute("CREATE TABLE IF NOT EXISTS docket_court (id INTEGER PRIMARY KEY, court_id TEXT)")
     tick = progress_logger("dockets", every=1_000_000)
     batch = []
+    width_reject = 0
     for i, row in enumerate(open_csv_bz2(src)):
         if i == 0:
             idx = header_index(row)
             i_id, i_court = idx["id"], idx["court_id"]
+            width = len(row)
+            continue
+        if not check_width(row, width, "dockets"):
+            width_reject += 1
             continue
         did = guard_int(row[i_id])
         if did is not None:
@@ -111,7 +117,7 @@ def stage_clusters_dockets():
     nc = conn.execute(
         "SELECT count(*) FROM docket_court WHERE court_id IS NOT NULL AND court_id != ''"
     ).fetchone()[0]
-    print(f"[dockets] loaded {n:,} ({nc:,} with court_id)")
+    print(f"[dockets] loaded {n:,} ({nc:,} with court_id, {width_reject:,} width-rejected)")
     conn.close()
     mark_done(CLUSTERS_DB)
 
@@ -140,9 +146,14 @@ def stage_clusters_join():
         if n_raw == 0:
             tick = progress_logger("clusters", every=1_000_000)
             batch = []
+            width_reject = 0
             for i, row in enumerate(open_csv_plain(src)):
                 if i == 0:
                     idx = header_index(row)
+                    width = len(row)
+                    continue
+                if not check_width(row, width, "clusters"):
+                    width_reject += 1
                     continue
                 cid = guard_int(row[idx["id"]])
                 if cid is None:
@@ -165,6 +176,8 @@ def stage_clusters_join():
             if batch:
                 conn.executemany("INSERT OR REPLACE INTO raw_clusters VALUES (?,?,?,?,?,?,?,?)", batch)
                 conn.commit()
+            if width_reject:
+                print(f"[clusters] {width_reject:,} width-rejected rows skipped")
 
         print("[clusters] joining docket->court on disk...")
         t0 = time.time()
@@ -217,9 +230,14 @@ def stage_small():
 
     if not is_done(BULK / "courts.done"):
         rows = []
+        width_reject = 0
         for i, r in enumerate(open_csv_bz2(BULK / "courts-2026-06-30.csv.bz2")):
             if i == 0:
                 idx = header_index(r)
+                width = len(r)
+                continue
+            if not check_width(r, width, "courts"):
+                width_reject += 1
                 continue
             rows.append((r[idx["id"]], r[idx["full_name"]], r[idx["jurisdiction"]],
                          r[idx["citation_string"]] or None, r[idx["parent_court_id"]] or None))
@@ -228,13 +246,18 @@ def stage_small():
             " VALUES (?,?,?,?,?)", rows)
         conn.commit()
         mark_done(BULK / "courts.done")
-        print(f"[courts] {len(rows)}")
+        print(f"[courts] {len(rows)} ({width_reject} width-rejected)")
 
     if not is_done(BULK / "judges.done"):
         rows = []
+        width_reject = 0
         for i, r in enumerate(open_csv_bz2(BULK / "people-db-people-2026-06-30.csv.bz2")):
             if i == 0:
                 idx = header_index(r)
+                width = len(r)
+                continue
+            if not check_width(r, width, "judges"):
+                width_reject += 1
                 continue
             jid = guard_int(r[idx["id"]])
             if jid is not None:
@@ -244,14 +267,19 @@ def stage_small():
             "INSERT OR REPLACE INTO judges(id,name_first,name_last,fjc_id) VALUES (?,?,?,?)", rows)
         conn.commit()
         mark_done(BULK / "judges.done")
-        print(f"[judges] {len(rows)}")
+        print(f"[judges] {len(rows)} ({width_reject} width-rejected)")
 
     if not is_done(BULK / "citations.done"):
         tick = progress_logger("citations", every=1_000_000)
         batch = []
+        width_reject = 0
         for i, r in enumerate(open_csv_bz2(BULK / "citations-2026-06-30.csv.bz2")):
             if i == 0:
                 idx = header_index(r)
+                width = len(r)
+                continue
+            if not check_width(r, width, "citations"):
+                width_reject += 1
                 continue
             cl = guard_int(r[idx["cluster_id"]])
             if cl is not None:
@@ -281,7 +309,7 @@ def stage_small():
             conn.executemany("INSERT INTO citation_strings VALUES (?,?,?,?,?)", batch)
             conn.commit()
         n = conn.execute("SELECT count(*) FROM citation_strings").fetchone()[0]
-        print(f"[citation_strings] {n:,}")
+        print(f"[citation_strings] {n:,} ({width_reject:,} width-rejected)")
         mark_done(BULK / "citations.done")
     conn.close()
 
@@ -297,9 +325,14 @@ def stage_citormap():
             citing_opinion_id INTEGER, cited_opinion_id INTEGER, depth INTEGER)""")
         tick = progress_logger("citormap", every=10_000_000)
         batch = []
+        width_reject = 0
         for i, r in enumerate(open_csv_bz2(BULK / "citation-map-2026-06-30.csv.bz2")):
             if i == 0:
                 idx = header_index(r)
+                width = len(r)
+                continue
+            if not check_width(r, width, "citormap"):
+                width_reject += 1
                 continue
             c = guard_int(r[idx["citing_opinion_id"]])
             d = guard_int(r[idx["cited_opinion_id"]])
@@ -314,7 +347,7 @@ def stage_citormap():
             conn.executemany("INSERT INTO citormap VALUES (?,?,?)", batch)
             conn.commit()
         n = conn.execute("SELECT count(*) FROM citormap").fetchone()[0]
-        print(f"[citormap] {n:,} edges")
+        print(f"[citormap] {n:,} edges ({width_reject:,} width-rejected)")
         mark_done(BULK / "citormap.done")
     else:
         print("[citormap] already done")
@@ -335,17 +368,28 @@ def stage_parentheticals():
                      encoding="utf-8", errors="replace"),
             **CSV_KWARGS)
         idx = header_index(next(fh))
+        width = len(idx)
         tick = progress_logger("parentheticals", every=1_000_000)
         buf = []
         rid = 0
+        width_reject = score_reject = 0
         for r in fh:
+            if not check_width(r, width, "parentheticals"):
+                width_reject += 1
+                continue
             txt = r[idx["text"]]
             if not txt:
+                continue
+            try:
+                score = float(r[idx["score"]] or 0)
+            except ValueError:
+                # One malformed score must not abort a 6.4M-row load.
+                score_reject += 1
                 continue
             rid += 1
             buf.append((rid, guard_int(r[idx["described_opinion_id"]]),
                         guard_int(r[idx["describing_opinion_id"]]), txt,
-                        float(r[idx["score"]] or 0)))
+                        score))
             tick()
             if len(buf) >= 500_000:
                 conn.executemany(
@@ -361,7 +405,7 @@ def stage_parentheticals():
         conn.execute("INSERT INTO parentheticals_fts(parentheticals_fts) VALUES ('rebuild')")
         conn.commit()
         n = conn.execute("SELECT count(*) FROM parentheticals").fetchone()[0]
-        print(f"[parentheticals] {n:,}")
+        print(f"[parentheticals] {n:,} ({width_reject:,} width-rejected, {score_reject:,} bad-score)")
         mark_done(BULK / "parentheticals.done")
     else:
         print("[parentheticals] already done")
@@ -372,7 +416,7 @@ def stage_parentheticals():
 
 def find_resync(f, start):
     """Shard resync: delegate to the canonical BOUNDARY_RE in common.py."""
-    # 64 MB lookahead is enough for any record; use a huge end sentinel.
+    # 256 MB lookahead is enough for any record; use a huge end sentinel.
     # The caller (iter_records) bounds the shard by nominal_end and stops
     # yielding once the next boundary is at/after that offset — so the
     # sentinel here does not change semantics, it just reuses the single
@@ -448,6 +492,7 @@ def stage_shard(index, total):
     tick = progress_logger(f"shard {index}", every=20_000)
     misaligned_run = 0
     n_rows = n_anchor = 0
+    stats = {"width_reject": 0, "text_fail": 0}
     t0 = time.time()
     op_batch, an_batch = [], {}
     cache_cid, cache_row = None, None
@@ -460,6 +505,11 @@ def stage_shard(index, total):
                 raise RuntimeError(f"shard {index}: desynced, aborting")
             continue
         misaligned_run = 0
+        # The 22-field trap: a shifted row can carry a plausible leading id
+        # while misaligning every column after the gap. Reject by width —
+        # the id check above cannot catch it.
+        if not check_width(fields, len(OPINION_HEADER), f"shard {index}", stats):
+            continue
         fmap = dict(zip(OPINION_HEADER, fields))
         cluster_id = guard_int(fmap.get("cluster_id"))
         if cluster_id == cache_cid:
@@ -470,7 +520,13 @@ def stage_shard(index, total):
                 " citation_count, blocked, court_id FROM clusters WHERE id=?",
                 (cluster_id,)).fetchone()
             cache_cid, cache_row = cluster_id, crow
-        text, anchors = textclean.extract_text(fmap)
+        try:
+            text, anchors = textclean.extract_text(fmap)
+        except Exception as e:
+            # One pathological HTML value must not abort a ~73-min shard.
+            # The row is quarantined (counted, not inserted).
+            stats["text_fail"] = stats.get("text_fail", 0) + 1
+            continue
         op_batch.append((
             oid, cluster_id,
             crow[6] if crow else None,
@@ -487,8 +543,13 @@ def stage_shard(index, total):
             (crow[5] if crow else 0) or 0,
             text,
         ))
+        # Every in-text mention keeps its own context: an opinion that cites
+        # a case neutrally first and with treatment language second must not
+        # lose the second context to pair-granular dedup (treatment recall
+        # depends on it). Keyed by (citing, cited, char_pos); the merge
+        # unique index matches, so exact duplicates still collapse.
         for cited, start, _end in anchors:
-            key = (oid, cited)
+            key = (oid, cited, start)
             if key not in an_batch:
                 pre, post = textclean.context_window(text, start, _end)
                 ctx = (pre + " … " + post).strip(" …")[:600]
@@ -507,6 +568,7 @@ def stage_shard(index, total):
     side.close()
     mark_done(out_path)
     print(f"[shard {index}] DONE {n_rows:,} opinions, {n_anchor:,} anchored cites "
+          f"(width_reject={stats['width_reject']:,}, text_fail={stats['text_fail']:,}) "
           f"in {(time.time()-t0)/60:.1f} min")
 
 
@@ -595,8 +657,10 @@ def stage_merge(total):
         print("[merge] building cites from citormap × anchors...")
         t0 = time.time()
         conn.execute("DELETE FROM cites")
+        # Pair × position: every in-text mention keeps its own context row,
+        # so a treatment-bearing second mention survives (Phase 2).
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_anchors"
-                     " ON anchors(citing_id, cited_id)")
+                     " ON anchors(citing_id, cited_id, char_pos)")
         conn.execute("""
             INSERT INTO cites(citing_id, cited_id, depth, char_pos, context)
             SELECT m.citing_opinion_id, m.cited_opinion_id, m.depth, a.char_pos, a.context

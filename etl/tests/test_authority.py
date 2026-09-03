@@ -141,6 +141,62 @@ class TestAuthority(unittest.TestCase):
         n2 = len(ba.load_edges(self.outdir))
         self.assertEqual(n1, n2)
 
+    def test_write_ignores_stale_treatment_ids(self):
+        # A treatment.npz id with no opinion row must flag nothing — never
+        # the wrong index (searchsorted insertion point).
+        conn = fixture_conn()
+        try:
+            ba.scan_stage(conn, outdir=self.outdir)
+            tr = __import__("numpy").load(self.outdir / "treatment.npz")
+            stale_ids = __import__("numpy").append(tr["ids"], [999_999_999])
+            stale_vals = __import__("numpy").append(tr["vals"], [1])
+            __import__("numpy").savez_compressed(
+                self.outdir / "treatment.npz", ids=stale_ids, vals=stale_vals)
+            ba.pagerank_stage(conn, outdir=self.outdir)
+            ba.write_stage(conn, outdir=self.outdir)
+            flags = dict(conn.execute(
+                "SELECT opinion_id, treatment_flags FROM authority").fetchall())
+            self.assertNotIn(999_999_999, flags)
+            # stale id 999999999 would insertion-sort at the end; without the
+            # membership guard the last opinion would carry bit 1.
+            self.assertEqual(flags[5] & 1, 0)
+        finally:
+            conn.close()
+
+    def test_reflag_clears_stale_flags(self):
+        conn = fixture_conn()
+        try:
+            ba.scan_stage(conn, outdir=self.outdir)
+            ba.pagerank_stage(conn, outdir=self.outdir)
+            ba.write_stage(conn, outdir=self.outdir)
+            # opinion 2 has no treatment context; plant a stale flag, then
+            # remove ALL treatment language and reflag: every flag must clear.
+            conn.execute("UPDATE authority SET treatment_flags = 4 WHERE opinion_id = 2")
+            conn.execute("UPDATE cites SET context = 'a plain neutral citation here'")
+            conn.commit()
+            ba.reflag_stage(conn, outdir=self.outdir)
+            flags = dict(conn.execute(
+                "SELECT opinion_id, treatment_flags FROM authority").fetchall())
+            self.assertTrue(all(v == 0 for v in flags.values()))
+        finally:
+            conn.close()
+
+    def test_load_opinions_bad_dates_become_zero(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE opinions (id INTEGER PRIMARY KEY, date_filed TEXT)")
+        conn.executemany(
+            "INSERT INTO opinions VALUES (?, ?)",
+            [(1, "2020-01-01"), (2, "not-a-date"), (3, None),
+             (4, "99999-99-99"), (5, "1500-01-01")])
+        ids, dates = ba.load_opinions(conn)
+        conn.close()
+        got = dict(zip(ids.tolist(), dates.tolist()))
+        self.assertEqual(got[1], 20200101)
+        self.assertEqual(got[2], 0)
+        self.assertEqual(got[3], 0)
+        self.assertEqual(got[4], 0)
+        self.assertEqual(got[5], 0)  # year < 1600 out of range
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

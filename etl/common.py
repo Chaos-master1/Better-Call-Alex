@@ -53,12 +53,29 @@ def find_resync_offset(f, start, end, chunk=4 * 1024 * 1024):
         if not buf:
             break
         window = prev_tail + buf
+        base = pos - len(prev_tail)  # file offset of window[0]
         m = BOUNDARY_RE.search(window)
-        if m and (start + len(prev_tail) + m.start()) > start:
-            return start + len(prev_tail) + m.start()
+        if m and base + m.start() >= start:
+            return base + m.start()
         prev_tail = window[-overlap:]
         pos += len(buf)
     return end
+
+
+def check_width(row, expected, ctx, stats=None):
+    """The 22-field trap (CLAUDE.md §4): a shifted row can still carry a
+    plausible leading id while misaligning every column after the gap, so
+    `zip(header, fields)` truncation/padding would silently write garbage.
+    Reject by width, count it, never insert. Returns True when usable."""
+    if len(row) != expected:
+        if stats is not None:
+            stats["width_reject"] = stats.get("width_reject", 0) + 1
+        else:
+            import sys
+            print(f"[{ctx}] width {len(row)} != {expected}, row skipped",
+                  flush=True, file=sys.stderr)
+        return False
+    return True
 
 
 def guard_int(value, default=None):
@@ -164,8 +181,10 @@ CREATE TABLE IF NOT EXISTS courts (
     name TEXT,
     jurisdiction TEXT,
     citation_string TEXT,
-    parent_id TEXT,
-    level INTEGER
+    parent_id TEXT
+    -- NOTE: no `level` column. It was in the design but never populated
+    -- (nothing reads it; the jurisdiction walk uses parent_id). Removed
+    -- Phase 2 rather than filled with invented values.
 );
 CREATE TABLE IF NOT EXISTS judges (
     id INTEGER PRIMARY KEY,

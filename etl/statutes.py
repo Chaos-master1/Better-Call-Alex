@@ -8,7 +8,8 @@ Sources:
     fast with a remediation hint when it is not.
   eCFR versioner API — the regulations (CFR), per title:
       https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml
-    Streams DIV8/TYPE=SECTION nodes, so a full title never sits in RAM.
+    Parsed with iterparse (constant per-section memory via elem.clear();
+    the title XML itself is bounded by MAX_XML_BYTES, not streamed).
 
 Storage (CLAUDE.md reserved schema):
   statutes(source, title, section, heading, text, effective_date)
@@ -57,8 +58,12 @@ USC_RELEASE_URL = USC_HOST + ("download/releasepoints/us/pl/{congress}/{law}"
 
 ALLOWED_HOSTS = ("www.ecfr.gov", "uscode.house.gov")
 INT_RE = re.compile(r"^\d{1,3}$")
+# URL path/query components. SECTION_RE additionally allows parens: real
+# section ids carry subsection pins ("1026.36(a)"), which are URL-safe and
+# must not be rejected into fake spot-check mismatches.
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+SECTION_RE = re.compile(r"^[A-Za-z0-9._()/-]{1,80}$")
 
 FETCH_TIMEOUT = 180
 FETCH_ATTEMPTS = 3
@@ -106,7 +111,7 @@ def usc_url(title: str, congress: str, law: str) -> str:
 
 
 def section_url(date: str, title: str, section: str) -> str:
-    if not COMPONENT_RE.match(str(section)):
+    if not SECTION_RE.match(str(section)):
         raise SystemExit(f"bad section id {section!r}")
     return ecfr_url(date, title) + "?section=" + str(section)
 
@@ -114,10 +119,14 @@ def section_url(date: str, title: str, section: str) -> str:
 # ----------------------------------------------------------------- fetch
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Redirects are refused: every fetch must land on an allow-listed host."""
+    """Redirects are refused: every fetch must land on an allow-listed host.
+    Returning None here would hand the 3xx body back as if it were the feed,
+    so refuse loudly instead."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        raise urllib.error.HTTPError(
+            newurl, code, f"redirect refused ({code} to {newurl})",
+            headers, fp)
 
 
 _OPENER = urllib.request.build_opener(_NoRedirect)
@@ -126,7 +135,11 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 def _public_ip_guard(host: str) -> None:
     """Resolve the host and refuse non-public addresses (loopback, RFC1918,
     link-local, cloud metadata ranges) so a hostile DNS answer cannot pivot
-    a fetch at the local network."""
+    a fetch at the local network.
+    Residual risk (documented, not fixed): resolve-then-fetch is TOCTOU —
+    the opener re-resolves after this check. Pinning would require a custom
+    HTTPS connect with SNI override; the allow-list keeps the residual
+    exposure to the two official hosts."""
     import ipaddress
     import socket
     try:
@@ -235,6 +248,23 @@ def _first_child(el, name: str):
     return None
 
 
+USC_BODY_TAGS = ("content", "P", "FP", "note", "text")
+
+
+def _gather_body(el, parts: list, claimed: bool) -> None:
+    """Collect body text without double-counting containers (the eCFR
+    parser's rule, applied here too): text is claimed at the HIGHEST
+    candidate element, so a <note> contributes its itertext once and its
+    inner <content>/<heading> children are not appended a second time."""
+    if not claimed and _local(el.tag) in USC_BODY_TAGS:
+        txt = collapse_ws("".join(el.itertext()))
+        if txt:
+            parts.append(txt)
+        claimed = True
+    for child in el:
+        _gather_body(child, parts, claimed)
+
+
 def parse_usc_sections(data: bytes):
     """Parse an OLRC usc-md title XML into statute rows.
 
@@ -258,13 +288,10 @@ def parse_usc_sections(data: bytes):
         eff_el = _first_child(sec, "effective_date")
         eff = collapse_ws("".join(eff_el.itertext())) if eff_el is not None else None
         parts: list[str] = []
-        for el in sec.iter():
-            if el is head_el:
+        for child in sec:
+            if child is head_el:
                 continue
-            if _local(el.tag) in ("content", "P", "FP", "note", "text"):
-                txt = collapse_ws("".join(el.itertext()))
-                if txt:
-                    parts.append(txt)
+            _gather_body(child, parts, claimed=False)
         text = " ".join(parts)
         if num and (heading or text):
             yield {"source": "usc", "num": num, "heading": heading,
@@ -318,10 +345,15 @@ def load_ecfr_title(conn: sqlite3.Connection, title: str, date: str, part: str |
 def load_usc_title(conn: sqlite3.Connection, title: str, congress: str, law: str) -> int:
     url = usc_url(title, congress, law)
     print(f"[usc] title {title} at release point pl {congress}-{law} <- {url}", flush=True)
-    zbytes = fetch(url)
-    with zipfile_member(zbytes) as (name, xdata):
-        print(f"[usc] archive member: {name} ({len(xdata):,} bytes)", flush=True)
-        n = insert_rows(conn, parse_usc_sections(xdata), title)
+    return load_usc_bytes(conn, title, fetch(url))
+
+
+def load_usc_bytes(conn: sqlite3.Connection, title: str, zbytes: bytes) -> int:
+    """USC load from already-fetched zip bytes (network-free; unit-tested).
+    Split from load_usc_title so the archive path is exercisable offline."""
+    name, xdata = zipfile_member(zbytes)
+    print(f"[usc] archive member: {name} ({len(xdata):,} bytes)", flush=True)
+    n = insert_rows(conn, parse_usc_sections(xdata), title)
     rebuild_fts(conn)
     print(f"[usc] title {title}: {n} sections stored", flush=True)
     return n
@@ -358,7 +390,7 @@ def spot_check(conn: sqlite3.Connection, n: int, date: str) -> dict:
         try:
             data = fetch(section_url(date, title, section))
             live = list(parse_ecfr_sections(data))
-        except (SystemExit, ET.ParseError) as e:
+        except (SystemExit, SafeET.ParseError) as e:
             mismatches.append({"title": title, "section": section,
                                "error": str(e)[:200]})
             continue

@@ -41,15 +41,11 @@ def clean_html(src):
     s = SCRIPT_STYLE_RE.sub(" ", s)
 
     anchor_ids = []
-    seen_ids = set()
 
     def repl(m):
-        cid = int(m.group(1))
-        if cid not in seen_ids:
-            seen_ids.add(cid)
-            anchor_ids.append(cid)
-        else:
-            anchor_ids.append(-cid)
+        # Every mention is kept: pair-granular dedup downstream used to
+        # discard a second, treatment-bearing mention of the same case.
+        anchor_ids.append(int(m.group(1)))
         return MARKER + m.group(2) + MARKER
 
     s = ANCHOR_RE.sub(repl, s)
@@ -58,7 +54,11 @@ def clean_html(src):
     s = WS_RE.sub(" ", s)
 
     parts = s.split(MARKER)
-    assert len(parts) % 2 == 1, "unbalanced anchor markers"
+    if len(parts) % 2 == 0:
+        # Unbalanced markers (an anchor's own text contained a NUL byte):
+        # keep the text, drop the anchors. Never abort the shard over one
+        # pathological value — the caller counts the quarantine.
+        return "".join(parts), []
     out = []
     out_len = 0
     anchors = []
