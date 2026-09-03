@@ -122,7 +122,7 @@ export async function runCase(
     // 6. swap back to 9b so subsequent runs start on the resident model
     await useModel(RESIDENT_MODEL);
 
-    const runId = finalizeRun(appDb, caseId, "succeeded");
+    const runId = finalizeRun(appDb, caseId, "succeeded", performance.now() - t0);
     return {
       run_id: runId,
       case_id: caseId,
@@ -136,7 +136,7 @@ export async function runCase(
     };
   } catch (err) {
     audit(appDb, "agent.error", { caseId, err: String(err) }, caseId);
-    finalizeRun(appDb, caseId, "failed");
+    finalizeRun(appDb, caseId, "failed", performance.now() - t0);
     throw err;
   } finally {
     try {
@@ -168,7 +168,8 @@ function startRun(appDb: Database.Database, caseId: number): number {
 function finalizeRun(
   appDb: Database.Database,
   caseId: number,
-  status: "succeeded" | "failed" | "cancelled"
+  status: "succeeded" | "failed" | "cancelled",
+  ms?: number
 ): number {
   const target = appDb
     .prepare(
@@ -178,9 +179,9 @@ function finalizeRun(
   if (!target) return 0;
   appDb
     .prepare(
-      `UPDATE runs SET status = ?, finished_at = datetime('now') WHERE id = ?`
+      `UPDATE runs SET status = ?, finished_at = datetime('now'), ms = ? WHERE id = ?`
     )
-    .run(status, target.id);
+    .run(status, Math.round(ms ?? 0), target.id);
   return target.id;
 }
 
@@ -211,7 +212,9 @@ function persistResearch(
     .prepare(
       `UPDATE runs SET research_json = ? WHERE case_id = ? AND status = 'running'`
     )
-    .run(JSON.stringify(research.queries), caseId);
+    // Full object, not just queries — the history API rehydrates the
+    // research panel (top picks + hits) from this column.
+    .run(JSON.stringify(research), caseId);
 }
 
 function persistAnalyst(

@@ -113,11 +113,15 @@ export function openApp(): Database.Database {
  *  statement here is a compile-time constant — nothing user-derived is
  *  ever concatenated into SQL. */
 function migrate(db: Database.Database): void {
-  const cols = db.pragma("table_info(audit_log)") as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === "case_id")) {
+  const auditCols = db.pragma("table_info(audit_log)") as Array<{ name: string }>;
+  if (!auditCols.some((c) => c.name === "case_id")) {
     db.exec("ALTER TABLE audit_log ADD COLUMN case_id INTEGER");
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_audit_case ON audit_log(case_id)");
+  const runCols = db.pragma("table_info(runs)") as Array<{ name: string }>;
+  if (!runCols.some((c) => c.name === "ms")) {
+    db.exec("ALTER TABLE runs ADD COLUMN ms INTEGER");
+  }
 }
 
 /** A crashed process leaves runs stuck at 'running' forever — finalizeRun

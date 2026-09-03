@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 interface VerifiedSentence {
   index: number;
@@ -74,21 +74,57 @@ function treatmentLabels(flags: number): string[] {
   return TREATMENT_BITS.filter((t) => flags & t.bit).map((t) => t.label);
 }
 
+interface CaseSummary {
+  id: number;
+  title: string;
+  created_at: string;
+  status: string | null;
+  run_id: number | null;
+  ms: number | null;
+  overall: string | null;
+}
+
 export default function Home() {
   const [facts, setFacts] = useState(SAMPLE);
   const [out, setOut] = useState<RunResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadCases = useCallback(async () => {
+    try {
+      const r = await fetch("/api/cases");
+      if (!r.ok) return;
+      const j = (await r.json()) as { cases: CaseSummary[] };
+      setCases(j.cases ?? []);
+      setHistoryError(null);
+    } catch {
+      setHistoryError("history unavailable");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCases();
+  }, [loadCases]);
 
   const run = () => {
     setErr(null);
     setOut(null);
+    // One flight at a time: a new submit aborts the previous request so a
+    // stale run can never clobber a fresh one (the server queue still
+    // serializes model work).
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     startTransition(async () => {
       try {
         const r = await fetch("/api/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ facts }),
+          signal: ac.signal,
         });
         if (!r.ok) {
           const t = await r.text();
@@ -97,6 +133,30 @@ export default function Home() {
         }
         const j = (await r.json()) as RunResponse;
         setOut(j);
+        loadCases();
+      } catch (e: any) {
+        if (e?.name === "AbortError") return; // cancelled by a newer submit
+        setErr(String(e?.message ?? e));
+      }
+    });
+  };
+
+  const cancel = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  };
+
+  const openCase = (id: number) => {
+    setErr(null);
+    startTransition(async () => {
+      try {
+        const r = await fetch(`/api/cases/${id}`);
+        if (!r.ok) {
+          const t = await r.text();
+          setErr(`${r.status}: ${t.slice(0, 300)}`);
+          return;
+        }
+        setOut((await r.json()) as RunResponse);
       } catch (e: any) {
         setErr(String(e?.message ?? e));
       }
@@ -104,7 +164,47 @@ export default function Home() {
   };
 
   return (
-    <main style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ display: "flex", gap: 20, alignItems: "flex-start", maxWidth: 1160, margin: "0 auto", padding: "24px 16px" }}>
+      <aside style={{ width: 230, flexShrink: 0, position: "sticky", top: 24 }}>
+        <h2 style={{ fontSize: 11, color: "#8a8a8a", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 8px" }}>Case history</h2>
+        {historyError && <p style={{ fontSize: 11, color: "#737373" }}>{historyError}</p>}
+        {!historyError && cases.length === 0 && (
+          <p style={{ fontSize: 11, color: "#737373" }}>No cases yet — run the pipeline.</p>
+        )}
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {cases.map((c) => (
+            <li key={c.id}>
+              <button
+                onClick={() => openCase(c.id)}
+                disabled={pending}
+                aria-label={`Open case ${c.id}: ${c.title}`}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  background: out?.case_id === c.id ? "#1f2937" : "#111",
+                  border: "1px solid #262626",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  cursor: pending ? "wait" : "pointer",
+                  color: "#d4d4d4",
+                }}
+              >
+                <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.title}
+                </div>
+                <div style={{ fontSize: 10, color: "#737373", marginTop: 2, display: "flex", gap: 6, alignItems: "center" }}>
+                  <span>{c.created_at?.slice(0, 16)}</span>
+                  {c.status && <span>· {c.status}</span>}
+                  {c.overall && (
+                    <span style={{ color: c.overall === "pass" ? "#4ade80" : "#fca5a5" }}>{c.overall === "pass" ? "✓" : "✗"}</span>
+                  )}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
+      <main style={{ flex: 1, minWidth: 0 }}>
       <h1 style={{ fontSize: 26, marginBottom: 4, letterSpacing: -0.5 }}>Better Call Alex</h1>
       <p style={{ color: "#a3a3a3", marginTop: 0, fontSize: 13 }}>US case-law research. Local. Verifiable. Every claim is gated.</p>
       <div style={{ background: "#3a1f1f", color: "#fca5a5", padding: "8px 12px", borderRadius: 4, marginBottom: 12, fontSize: 13, border: "1px solid #7f1d1d" }}>
@@ -123,6 +223,7 @@ export default function Home() {
         rows={6}
         placeholder="Free-text fact pattern…"
         aria-label="Fact pattern"
+        maxLength={16000}
         style={{
           width: "100%",
           background: "#171717",
@@ -133,6 +234,7 @@ export default function Home() {
           fontFamily: "inherit",
           fontSize: 13,
           lineHeight: 1.5,
+          boxSizing: "border-box",
         }}
       />
       <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -152,6 +254,22 @@ export default function Home() {
         >
           {pending ? "Running pipeline (up to a few minutes)…" : "Run pipeline"}
         </button>
+        {pending && (
+          <button
+            onClick={cancel}
+            style={{
+              padding: "9px 14px",
+              background: "#3f1010",
+              color: "#fca5a5",
+              border: "1px solid #7f1d1d",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            Cancel
+          </button>
+        )}
         <span style={{ fontSize: 11, color: "#8a8a8a" }}>
           qwen3.5:9b → qwen3:14b (batched, ≤2 swaps) → verifier gate · Ctrl/⌘+Enter to run
         </span>
@@ -165,7 +283,72 @@ export default function Home() {
         </p>
       )}
       {out && <Result out={out} />}
-    </main>
+      </main>
+    </div>
+  );
+}
+
+function draftToText(out: RunResponse): string {
+  const lines: string[] = [];
+  lines.push(out.drafted.banner);
+  lines.push("");
+  lines.push(out.drafted.title);
+  lines.push(out.drafted.caption);
+  lines.push("");
+  lines.push("— IRAC —");
+  for (const [k, v] of Object.entries(out.irac ?? {})) {
+    lines.push(`${k.toUpperCase()}: ${String(v)}`);
+  }
+  lines.push("");
+  lines.push("— DRAFT (sentences) —");
+  for (const s of out.draft.sentences) {
+    const cite = s.pin_cite ? ` (${s.pin_cite})` : "";
+    const mark = s.verified ? "" : " [UNVERIFIED]";
+    lines.push(`[${s.tag}] ${s.text}${cite}${mark}`);
+  }
+  lines.push("");
+  lines.push("— COUNTER-ARGUMENT —");
+  lines.push(String(out.adversary?.counter_argument ?? ""));
+  lines.push("");
+  lines.push("— AUTHORITY APPENDIX —");
+  for (const a of out.drafted.authority_appendix ?? []) {
+    const treat = a.inferred_treatment?.length
+      ? ` [inferred: ${a.inferred_treatment.join(", ")}]`
+      : "";
+    lines.push(`- ${a.citation} (${a.case_name ?? "—"})${a.verified ? "" : " UNVERIFIED"}${treat}`);
+  }
+  lines.push("");
+  lines.push(
+    `verification: ${out.draft.overall} · ${JSON.stringify(out.drafted.verification.summary)}`
+  );
+  return lines.join("\n");
+}
+
+function CopyDraftButton({ out }: { out: RunResponse }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(draftToText(out));
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          setCopied(false);
+        }
+      }}
+      style={{
+        padding: "3px 10px",
+        background: "#171717",
+        color: "#d4d4d4",
+        border: "1px solid #404040",
+        borderRadius: 6,
+        cursor: "pointer",
+        fontSize: 11,
+      }}
+    >
+      {copied ? "Copied ✓" : "Copy draft"}
+    </button>
   );
 }
 
@@ -179,6 +362,7 @@ function Result({ out }: { out: RunResponse }) {
         <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, background: out.draft.overall === "pass" ? "#052e16" : "#3f1010", color: out.draft.overall === "pass" ? "#4ade80" : "#fca5a5", border: `1px solid ${out.draft.overall === "pass" ? "#14532d" : "#7f1d1d"}` }}>
           {out.draft.overall.toUpperCase()} · {verified}/{total} verified · {(out.ms / 1000).toFixed(1)}s · run {out.run_id}
         </span>
+        <CopyDraftButton out={out} />
         <span style={{ fontSize: 11, color: "#737373" }}>{out.drafted.generated_at}</span>
       </div>
 
