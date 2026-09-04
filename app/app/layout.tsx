@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "./alex.css";
 
 export const metadata: Metadata = {
   title: "Better Call Alex",
@@ -12,15 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        margin: 0,
-        padding: 0,
-        background: "#0a0a0a",
-        color: "#e5e5e5",
-      }}>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
