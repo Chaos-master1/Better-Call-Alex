@@ -636,14 +636,20 @@ def stage_merge(total):
                     rows = conn.execute("SELECT id, cluster_id, court_id, date_filed, case_name, case_name_short, precedential_status, citation_count, author_id, author_str, type, page_count, ocr, blocked, text FROM sh.opinions WHERE id >= ? AND id < ?", (cur, cur + 20_000)).fetchall()
                     conn.executemany("INSERT INTO main.opinions (id, cluster_id, court_id, date_filed, case_name, case_name_short, precedential_status, citation_count, author_id, author_str, type, page_count, ocr, blocked, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
                     cur += 20_000
-            lo_a, hi_a = conn.execute("SELECT min(rowid), max(rowid) FROM sh.anchors").fetchone()
-            if lo_a is not None:
-                cur = int(lo_a)
-                top = int(hi_a)
-                while cur <= top:
-                    rows = conn.execute("SELECT citing_id, cited_id, char_pos, context FROM sh.anchors WHERE rowid >= ? AND rowid < ?", (cur, cur + 20_000)).fetchall()
-                    conn.executemany("INSERT INTO main.anchors (citing_id, cited_id, char_pos, context) VALUES (?, ?, ?, ?)", rows)
-                    cur += 20_000
+            # Anchors stream in one pass: the shard table is WITHOUT ROWID
+            # (no rowid to chunk by) and already-built shards must keep
+            # working, so no rowid bounds here. Same transaction as the
+            # opinions copy above: a shard commits both or neither, which is
+            # what makes the _merge_shards resume safe.
+            cur_a = conn.execute(
+                "SELECT citing_id, cited_id, char_pos, context FROM sh.anchors")
+            while True:
+                rows = cur_a.fetchmany(20_000)
+                if not rows:
+                    break
+                conn.executemany(
+                    "INSERT INTO main.anchors (citing_id, cited_id, char_pos, context) VALUES (?, ?, ?, ?)",
+                    rows)
             conn.execute("INSERT INTO main._merge_shards VALUES (?)", (i,))
             conn.commit()
             conn.execute("DETACH DATABASE sh")
