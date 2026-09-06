@@ -606,7 +606,7 @@ def stage_merge(total):
     merged = {r[0] for r in conn.execute("SELECT i FROM _merge_shards")}
 
     m_opinions = SHARDS / "merge.opinions.done"
-    if not m_opinions.exists():
+    if not is_done(m_opinions):
         print(f"[merge] inserting opinions ({len(merged)}/{total} already done)...", flush=True)
         for i in range(total):
             if i in merged:
@@ -659,7 +659,7 @@ def stage_merge(total):
     print(f"[merge] opinions={n_ops:,}")
 
     m_cites = SHARDS / "merge.cites.done"
-    if not m_cites.exists():
+    if not is_done(m_cites):
         print("[merge] building cites from citormap × anchors...")
         t0 = time.time()
         conn.execute("DELETE FROM cites")
@@ -695,7 +695,7 @@ def stage_merge(total):
     print(f"[merge] cites={n_cites:,} ({n_ctx:,} with context, {n_pos:,} with char_pos)")
 
     m_fts = SHARDS / "merge.fts.done"
-    if not m_fts.exists():
+    if not is_done(m_fts):
         print("[merge] rebuilding FTS5 index (long)...")
         t0 = time.time()
         conn.execute("INSERT INTO opinions_fts(opinions_fts) VALUES ('rebuild')")
@@ -704,7 +704,7 @@ def stage_merge(total):
         mark_done(m_fts)
 
     m_final = SHARDS / "merge.final.done"
-    if not m_final.exists():
+    if not is_done(m_final):
         print("[merge] indexes + analyze...")
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_cites_cited ON cites(cited_id);

@@ -19,7 +19,7 @@ RAW = DATA / "raw"
 BULK = DATA / "bulk"
 SHARDS = DATA / ".shards"
 
-CORPUS_DB = DATA / "corpus.sqlite"
+CORPUS_DB = Path(os.environ["ALEX_CORPUS_DB"]) if "ALEX_CORPUS_DB" in os.environ else DATA / "corpus.sqlite"
 CLUSTERS_DB = DATA / ".clusters.sqlite"  # sidecar: clusters + dockets join
 
 csv.field_size_limit(10**9)
