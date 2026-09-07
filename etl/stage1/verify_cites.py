@@ -1,0 +1,17 @@
+import sqlite3, time
+def log(m): print(m, flush=True)
+db = sqlite3.connect('file:data/corpus.new.sqlite?mode=ro', uri=True, timeout=120)
+log("verifying cites over-count on new DB (read-only)")
+t0 = time.time()
+total = db.execute("SELECT count(*) FROM cites").fetchone()[0]
+log("cites count: %d" % total)
+log("distinct (citing_id, cited_id) pairs: %d" % db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id FROM cites)").fetchone()[0])
+log("duplicates (count - distinct): %d" % (total - db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id FROM cites)").fetchone()[0]))
+log("cites depth distribution: %s" % db.execute("SELECT depth, count(*) FROM cites GROUP BY depth ORDER BY 1").fetchall())
+log("cites with NULL depth: %d" % db.execute("SELECT count(*) FROM cites WHERE depth IS NULL").fetchone()[0])
+log("anchors count: %d" % db.execute("SELECT count(*) FROM anchors").fetchone()[0])
+log("anchors distinct (citing, cited, char_pos) tuples: %d" % db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id, char_pos FROM anchors)").fetchone()[0])
+log("citemap count: %d" % db.execute("SELECT count(*) FROM citemap").fetchone()[0])
+log("expected cites if merge ran to completion: ~%d (anchors + citemap deduped)" % (db.execute("SELECT count(*) FROM anchors").fetchone()[0] + db.execute("SELECT count(*) FROM citemap").fetchone()[0]))
+db.close()
+log("verification complete in %.1fs" % (time.time()-t0))

@@ -1,0 +1,13 @@
+import sqlite3, time, sys
+def log(m): print(m, flush=True)
+db = sqlite3.connect('file:data/corpus.new.sqlite?mode=ro', uri=True, timeout=120)
+log("=== stage 1c: gap analysis (what the kill left behind) ===")
+log("tables: %s" % ([r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY 1")],))
+log("indexes: %s" % ([r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='index' ORDER BY 1") if r[0] != "sqlite_autoindex_opinions_1" and r[0] != "sqlite_autoindex_statutes_1"],))
+log("triggers: %s" % ([r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY 1")],))
+log("partial cite markers: %s" % ([r[0] for r in db.execute("SELECT i FROM _merge_shards ORDER BY 1")],))
+log("cites count: %d (kills happened mid-cites-join; 0 = rolled back clean)" % db.execute("SELECT count(*) FROM cites").fetchone()[0])
+log("authority count: %d" % db.execute("SELECT count(*) FROM authority").fetchone()[0])
+log("opinions_fts row estimate: %d" % db.execute("SELECT count(*) FROM opinions_fts").fetchone()[0])
+db.close()
+log("=== stage 1c done ===")

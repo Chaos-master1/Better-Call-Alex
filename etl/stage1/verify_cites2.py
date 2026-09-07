@@ -1,0 +1,20 @@
+import sqlite3, time
+def log(m): print(m, flush=True)
+db = sqlite3.connect('file:data/corpus.new.sqlite?mode=ro', uri=True, timeout=120)
+log("=== verification round 2 ===")
+t0 = time.time()
+log("anchors count: %d" % db.execute("SELECT count(*) FROM anchors").fetchone()[0])
+log("anchors distinct (citing, cited, char_pos): %d" % db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id, char_pos FROM anchors)").fetchone()[0])
+log("citemap table exists? %s" % bool([r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE name='citemap'")]))
+log("citormap table exists? %s" % bool([r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE name='citormap'")]))
+try:
+    log("citormap count: %d" % db.execute("SELECT count(*) FROM citormap").fetchone()[0])
+    log("citormap distinct (citing, cited): %d" % db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_opinion_id, cited_opinion_id FROM citormap)").fetchone()[0])
+except Exception as e:
+    log("citormap: %s" % e)
+log("expected cites (anchors + citormap deduped): %d" % (db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id FROM anchors)").fetchone()[0] + db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_opinion_id, cited_opinion_id FROM citormap)").fetchone()[0]))
+log("current cites count: %d" % db.execute("SELECT count(*) FROM cites").fetchone()[0])
+log("over-count: %d" % (db.execute("SELECT count(*) FROM cites").fetchone()[0] - db.execute("SELECT count(*) FROM (SELECT DISTINCT citing_id, cited_id FROM cites)").fetchone()[0]))
+log("depth distribution: %s" % db.execute("SELECT depth, count(*) FROM cites GROUP BY depth ORDER BY 2 DESC LIMIT 5").fetchall())
+db.close()
+log("round 2 complete in %.1fs" % (time.time()-t0))
