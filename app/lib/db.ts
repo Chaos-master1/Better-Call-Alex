@@ -3,7 +3,12 @@ import path from "node:path";
 import { resolveRepo } from "./repo.js";
 
 const REPO = resolveRepo();
-export const CORPUS_PATH = path.join(REPO, "data", "corpus.sqlite");
+// ALEX_CORPUS_DB overrides the corpus path for differential A/B testing
+// (old vs rebuilt DB) and safe experimentation. Production never sets it.
+// Mirrors the ETL seam in etl/common.py.
+export const CORPUS_PATH = process.env.ALEX_CORPUS_DB
+  ? path.resolve(REPO, process.env.ALEX_CORPUS_DB)
+  : path.join(REPO, "data", "corpus.sqlite");
 export const APP_PATH = path.join(REPO, "data", "app.sqlite");
 
 export function openCorpus(): Database.Database {

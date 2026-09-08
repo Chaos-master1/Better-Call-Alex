@@ -1,0 +1,49 @@
+=== stage1a start 2026-09-06T23:05:23Z ===
+=== stage 1a integrity_check start 00:05:23 ===
+connected in 0.0s
+=== stage1b start 2026-09-06T23:05:41Z ===
+=== stage 1b differential row counts ===
+=== stage1c start 2026-09-06T23:05:53Z ===
+=== stage 1c: gap analysis (what the kill left behind) ===
+tables: ['_merge_shards', 'anchors', 'authority', 'citation_strings', 'cites', 'citormap', 'courts', 'judges', 'opinions', 'opinions_fts', 'opinions_fts_config', 'opinions_fts_data', 'opinions_fts_docsize', 'opinions_fts_idx', 'parentheticals', 'parentheticals_fts', 'parentheticals_fts_config', 'parentheticals_fts_data', 'parentheticals_fts_docsize', 'parentheticals_fts_idx', 'statutes', 'statutes_fts', 'statutes_fts_config', 'statutes_fts_data', 'statutes_fts_docsize', 'statutes_fts_idx']
+indexes: ['ix_citemap_pair', 'sqlite_autoindex_courts_1', 'ux_anchors']
+triggers: []
+partial cite markers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+cites count: 167157950 (kills happened mid-cites-join; 0 = rolled back clean)
+authority count: 0
+opinions_fts row estimate: 10798347
+=== stage 1c done ===
+=== stage1c done 2026-09-06T23:30:39Z ===
+NEW: {'anchors': 112995692, 'authority': 0, 'citation_strings': 18123788, 'cites': 167157950, 'citormap': 77460014, 'courts': 3361, 'judges': 16191, 'opinions': 10798347, 'opinions_fts': 10798347, 'opinions_fts_config': 1, 'opinions_fts_data': 2, 'opinions_fts_docsize': 0, 'opinions_fts_idx': 0, 'parentheticals': 6408887, 'parentheticals_fts': 6408887, 'parentheticals_fts_config': 1, 'parentheticals_fts_data': 109682, 'parentheticals_fts_docsize': 6408887, 'parentheticals_fts_idx': 18164, 'statutes': 8621, 'statutes_fts': 8621, 'statutes_fts_config': 1, 'statutes_fts_data': 2440, 'statutes_fts_docsize': 8621, 'statutes_fts_idx': 2118}
+OLD: {'authority': 10798347, 'citation_strings': 18123788, 'cites': 105689491, 'courts': 3361, 'judges': 16191, 'opinions': 10798347, 'opinions_fts': 10798347, 'opinions_fts_config': 1, 'opinions_fts_data': 9597254, 'opinions_fts_docsize': 10798347, 'opinions_fts_idx': 566447, 'parentheticals': 6408887, 'parentheticals_fts': 6408887, 'parentheticals_fts_config': 1, 'parentheticals_fts_data': 109682, 'parentheticals_fts_docsize': 6408887, 'parentheticals_fts_idx': 18164, 'statutes': 8621, 'statutes_fts': 8621, 'statutes_fts_config': 1, 'statutes_fts_data': 2440, 'statutes_fts_docsize': 8621, 'statutes_fts_idx': 2118}
+TABLE | OLD | NEW | DELTA
+  anchors                        |      MISSING |    112995692 |  (mixed)
+  authority                      |     10798347 |            0 |  (-)
+  citation_strings               |     18123788 |     18123788 | 
+  cites                          |    105689491 |    167157950 |  (+)
+  citormap                       |      MISSING |     77460014 |  (mixed)
+  courts                         |         3361 |         3361 | 
+  judges                         |        16191 |        16191 | 
+  opinions                       |     10798347 |     10798347 | 
+  opinions_fts                   |     10798347 |     10798347 | 
+  opinions_fts_config            |            1 |            1 | 
+  opinions_fts_data              |      9597254 |            2 |  (-)
+  opinions_fts_docsize           |     10798347 |            0 |  (-)
+  opinions_fts_idx               |       566447 |            0 |  (-)
+  parentheticals                 |      6408887 |      6408887 | 
+  parentheticals_fts             |      6408887 |      6408887 | 
+  parentheticals_fts_config      |            1 |            1 | 
+  parentheticals_fts_data        |       109682 |       109682 | 
+  parentheticals_fts_docsize     |      6408887 |      6408887 | 
+  parentheticals_fts_idx         |        18164 |        18164 | 
+  statutes                       |         8621 |         8621 | 
+  statutes_fts                   |         8621 |         8621 | 
+  statutes_fts_config            |            1 |            1 | 
+  statutes_fts_data              |         2440 |         2440 | 
+  statutes_fts_docsize           |         8621 |         8621 | 
+  statutes_fts_idx               |         2118 |         2118 | 
+VERDICT: opinions match (deterministic from raw CSV)
+=== stage 1b done ===
+=== stage1b done 2026-09-07T00:55:49Z ===
+/tmp/stage1a.sh: line 4: 1903456 Killed                     ionice -c3 nice -n 19 python3 -u /tmp/stage1a.py
+=== stage1a done 2026-09-07T01:09:45Z ===

@@ -1,0 +1,25 @@
+=== rebuild start 2026-09-05T18:38:24Z ===
+[citormap] 13,107,682 rows (436,923/s)
+[citormap] 19,135,913 rows (318,932/s)
+[citormap] 30,000,001 rows (330,471/s)
+[citormap] 40,092,128 rows (331,945/s)
+[citormap] 44,958,780 rows (298,176/s)
+[citormap] 56,641,960 rows (313,321/s)
+[citormap] 66,000,001 rows (293,848/s)
+[citormap] 77,460,014 edges (0 width-rejected)
+=== merge start 2026-09-05T18:47:18Z ===
+[merge] inserting opinions (0/12 already done)...
+  shard 0: 1204s
+  shard 1: 1246s
+  shard 2: 1400s
+  shard 3: 1523s
+  shard 4: 1692s
+  shard 5: 1638s
+  shard 6: 1358s
+  shard 7: 1658s
+  shard 8: 2021s
+  shard 9: 1471s
+  shard 10: 1501s
+  shard 11: 2372s
+[merge] opinions=10,798,347
+[merge] building cites from citormap × anchors...

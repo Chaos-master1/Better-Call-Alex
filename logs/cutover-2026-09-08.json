@@ -1,0 +1,23 @@
+{
+  "event": "cutover to rebuilt corpus",
+  "date": "2026-09-08",
+  "files": {
+    "live": "data/corpus.sqlite (255,770,439,680 bytes, rebuilt with Phase 2 fixes)",
+    "preserved": "data/corpus.sqlite.orig-prev (210,831,458,304 bytes, 2026-08-22 build, untouched since Sep 2)"
+  },
+  "proof_on_live_file_before_swap": {
+    "integrity_check": "ok (single row, ~600GB verification reads)",
+    "g0_audit": "7/7 (test_g0.py against new DB)",
+    "g2_fixture_gate": "9/9 fabrication catch (100%)",
+    "g1_retrieval": "mean precision@10 0.2883, delta +0.0000 vs 2026-08-24 baseline",
+    "g5_export_gate": "4/4 citations resolve (case 32)",
+    "g5_export_http": "200, valid 28-paragraph docx, banner + both cites present",
+    "roe_lookup": "Roe v. Wade, scotus, 1973-01-22, cited_by 4929 (direct-only per ADR-003)"
+  },
+  "differential_vs_original": {
+    "identical_counts": ["opinions 10,798,347", "citation_strings 18,123,788", "parentheticals 6,408,887", "courts 3,361", "judges 16,191", "statutes 8,621"],
+    "cites": "167,157,950 rows over 105,689,491 distinct pairs (identical pairs to original; fan-out is all-context anchors, Phase 2 design)",
+    "schema_delta": ["courts.level removed", "anchors consumed by merge (no residue table, same as original)"]
+  },
+  "rollback": "rename corpus.sqlite.orig-prev back to corpus.sqlite; no code depends on the new file specifically (ALEX_CORPUS_DB unset in production)"
+}

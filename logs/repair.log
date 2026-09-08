@@ -1,0 +1,339 @@
+=== repair start 2026-09-07T01:49:15Z ALEX_CORPUS_DB=/home/Houssem/Desktop/projects/Better Call Alex/Better Call Alex/data/corpus.new.sqlite ===
+=== STEP 1: wipe corrupted cites table only (anchors/citemap/opinions untouched) ===
+/tmp/repair.sh: line 11: sqlite3: command not found
+  cites wiped, downstream markers cleared
+=== STEP 2: re-run merge (skips opinions, rebuilds cites+FTS+indexes) ===
+=== REPAIR FAILED at 2026-09-07T01:54:26Z ===
+=== repair2 start 2026-09-07T03:06:05Z (cites wiped, rebuilding) ===
+[merge] opinions=10,798,347
+[merge] building cites from citormap × anchors...
+  map edges: 39.3 min
+  anchor-only edges: 36.7 min
+[merge] cites=167,157,950 (112,995,692 with context, 112,995,692 with char_pos)
+[merge] rebuilding FTS5 index (long)...
+[merge] FTS5 rebuilt in 214.6 min
+[merge] indexes + analyze...
+[merge] complete
+=== merge complete 2026-09-07T10:36:37Z ===
+[scan] opinions=10,798,347
+[scan] 711,698 rows (23,723/s)
+[scan] 1,445,056 rows (24,084/s)
+[scan] 2,200,001 rows (24,258/s)
+[scan] 2,948,714 rows (24,432/s)
+[scan] 3,662,894 rows (24,307/s)
+[scan] 4,440,698 rows (24,576/s)
+[scan] 5,200,001 rows (24,632/s)
+[scan] 6,011,677 rows (24,934/s)
+[scan] 6,806,391 rows (25,106/s)
+[scan] 7,600,001 rows (25,105/s)
+[scan] 8,400,001 rows (25,119/s)
+[scan] 9,192,000 rows (25,224/s)
+[scan] 10,060,712 rows (25,508/s)
+[scan] 10,966,333 rows (25,839/s)
+[scan] 11,983,555 rows (26,372/s)
+[scan] 13,218,479 rows (27,288/s)
+[scan] 14,200,001 rows (27,567/s)
+[scan] 15,347,850 rows (28,156/s)
+[scan] 17,237,064 rows (29,972/s)
+[scan] 18,831,753 rows (31,121/s)
+[scan] 20,600,001 rows (32,409/s)
+[scan] 23,012,566 rows (34,573/s)
+[scan] 24,093,697 rows (34,636/s)
+[scan] 24,984,089 rows (34,431/s)
+[scan] 25,752,138 rows (34,080/s)
+[scan] 26,600,001 rows (33,802/s)
+[scan] 27,464,666 rows (33,619/s)
+[scan] 28,364,406 rows (33,490/s)
+[scan] 29,400,001 rows (33,499/s)
+[scan] 30,345,117 rows (33,433/s)
+[scan] 31,184,884 rows (33,259/s)
+[scan] 32,033,772 rows (33,105/s)
+[scan] 32,840,870 rows (32,918/s)
+[scan] 34,000,001 rows (33,056/s)
+[scan] 35,030,247 rows (33,092/s)
+[scan] 35,697,211 rows (32,793/s)
+[scan] 36,400,001 rows (32,517/s)
+[scan] 37,673,946 rows (32,777/s)
+[scan] 41,000,001 rows (34,740/s)
+[scan] 42,560,250 rows (35,168/s)
+[scan] 46,600,001 rows (37,568/s)
+[scan] 47,589,460 rows (37,459/s)
+[scan] 48,306,392 rows (37,146/s)
+[scan] 49,366,000 rows (37,105/s)
+[scan] 50,325,367 rows (36,992/s)
+[scan] 53,000,001 rows (38,107/s)
+[scan] 55,200,001 rows (38,814/s)
+[scan] 56,196,314 rows (38,698/s)
+[scan] 57,148,347 rows (38,557/s)
+[scan] 57,871,784 rows (38,271/s)
+[scan] 58,572,497 rows (37,981/s)
+[scan] 59,208,186 rows (37,660/s)
+[scan] 59,898,241 rows (37,386/s)
+[scan] 60,639,627 rows (37,153/s)
+[scan] 61,400,001 rows (36,921/s)
+[scan] 62,196,386 rows (36,737/s)
+[scan] 62,829,170 rows (36,464/s)
+[scan] 63,600,001 rows (36,266/s)
+[scan] 64,420,511 rows (36,116/s)
+[scan] 65,200,001 rows (35,895/s)
+[scan] 66,048,256 rows (35,771/s)
+[scan] 66,800,001 rows (35,589/s)
+[scan] 67,535,895 rows (35,415/s)
+[scan] 68,200,001 rows (35,208/s)
+[scan] 68,915,171 rows (35,035/s)
+[scan] 70,313,975 rows (35,209/s)
+[scan] 72,567,357 rows (35,800/s)
+[scan] 73,645,455 rows (35,802/s)
+[scan] 74,540,724 rows (35,716/s)
+[scan] 75,250,391 rows (35,545/s)
+[scan] 76,188,923 rows (35,486/s)
+[scan] 77,000,001 rows (35,342/s)
+[scan] 77,702,967 rows (35,180/s)
+[scan] 78,367,295 rows (35,005/s)
+[scan] 79,000,001 rows (34,805/s)
+[scan] 79,956,593 rows (34,766/s)
+[scan] 80,794,348 rows (34,678/s)
+[scan] 81,452,451 rows (34,516/s)
+[scan] 82,129,054 rows (34,366/s)
+[scan] 82,763,557 rows (34,202/s)
+[scan] 83,400,001 rows (34,032/s)
+[scan] 84,276,968 rows (33,974/s)
+[scan] 85,257,626 rows (33,959/s)
+[scan] 86,482,148 rows (34,040/s)
+[scan] 87,893,080 rows (34,191/s)
+[scan] 88,526,687 rows (34,041/s)
+[scan] 89,200,001 rows (33,882/s)
+[scan] 89,867,636 rows (33,751/s)
+[scan] 90,488,214 rows (33,606/s)
+[scan] 91,161,831 rows (33,483/s)
+[scan] 91,800,001 rows (33,324/s)
+[scan] 92,467,972 rows (33,205/s)
+[scan] 93,161,696 rows (33,097/s)
+[scan] 93,976,336 rows (33,035/s)
+[scan] 94,795,160 rows (32,975/s)
+[scan] 95,414,880 rows (32,848/s)
+[scan] 97,444,249 rows (33,203/s)
+[scan] 98,882,763 rows (33,353/s)
+[scan] 99,582,027 rows (33,252/s)
+[scan] 100,200,001 rows (33,125/s)
+[scan] 102,600,001 rows (33,578/s)
+[scan] 103,400,001 rows (33,498/s)
+[scan] 103,990,282 rows (33,365/s)
+[scan] 104,448,930 rows (33,193/s)
+[scan] 104,985,767 rows (33,049/s)
+[scan] 105,417,183 rows (32,874/s)
+[scan] 105,950,024 rows (32,734/s)
+[scan] 106,421,520 rows (32,578/s)
+[scan] 106,960,515 rows (32,445/s)
+[scan] 107,426,821 rows (32,292/s)
+[scan] 107,955,908 rows (32,161/s)
+[scan] 108,416,230 rows (32,012/s)
+[scan] 108,950,411 rows (31,887/s)
+[scan] 109,413,702 rows (31,744/s)
+[scan] 109,936,494 rows (31,621/s)
+[scan] 110,409,268 rows (31,485/s)
+[scan] 110,911,331 rows (31,360/s)
+[scan] 111,400,001 rows (31,221/s)
+[scan] 111,923,456 rows (31,107/s)
+[scan] 112,400,001 rows (30,959/s)
+[scan] 112,928,741 rows (30,850/s)
+[scan] 113,400,001 rows (30,724/s)
+[scan] 113,926,620 rows (30,618/s)
+[scan] 114,400,001 rows (30,497/s)
+[scan] 114,931,197 rows (30,395/s)
+[scan] 115,400,001 rows (30,277/s)
+[scan] 115,896,620 rows (30,170/s)
+[scan] 116,400,001 rows (30,045/s)
+[scan] 116,925,121 rows (29,949/s)
+[scan] 117,400,001 rows (29,838/s)
+[scan] 117,935,115 rows (29,747/s)
+[scan] 118,401,681 rows (29,641/s)
+[scan] 118,920,767 rows (29,549/s)
+[scan] 119,400,001 rows (29,442/s)
+[scan] 119,935,061 rows (29,356/s)
+[scan] 120,402,627 rows (29,256/s)
+[scan] 120,937,351 rows (29,173/s)
+[scan] 121,400,001 rows (29,060/s)
+[scan] 121,927,899 rows (28,978/s)
+[scan] 122,400,001 rows (28,854/s)
+[scan] 122,880,530 rows (28,763/s)
+[scan] 123,376,401 rows (28,678/s)
+[scan] 123,841,841 rows (28,587/s)
+[scan] 124,383,717 rows (28,515/s)
+[scan] 124,840,393 rows (28,424/s)
+[scan] 125,375,943 rows (28,352/s)
+[scan] 125,854,542 rows (28,268/s)
+[scan] 126,360,763 rows (28,192/s)
+[scan] 126,832,170 rows (28,109/s)
+[scan] 127,357,775 rows (28,039/s)
+[scan] 127,821,477 rows (27,957/s)
+[scan] 128,364,130 rows (27,892/s)
+[scan] 128,848,619 rows (27,816/s)
+[scan] 129,388,081 rows (27,753/s)
+[scan] 129,842,826 rows (27,673/s)
+[scan] 130,367,678 rows (27,608/s)
+[scan] 130,834,815 rows (27,532/s)
+[scan] 131,361,756 rows (27,469/s)
+[scan] 131,800,001 rows (27,387/s)
+[scan] 132,330,001 rows (27,327/s)
+[scan] 132,800,001 rows (27,254/s)
+[scan] 133,328,598 rows (27,195/s)
+[scan] 133,800,001 rows (27,121/s)
+[scan] 134,328,851 rows (27,064/s)
+[scan] 134,802,095 rows (26,996/s)
+[scan] 135,338,835 rows (26,942/s)
+[scan] 135,816,398 rows (26,876/s)
+[scan] 136,356,331 rows (26,824/s)
+[scan] 136,802,192 rows (26,754/s)
+[scan] 137,346,189 rows (26,704/s)
+[scan] 137,836,789 rows (26,644/s)
+[scan] 138,381,294 rows (26,595/s)
+[scan] 138,844,516 rows (26,531/s)
+[scan] 139,389,969 rows (26,483/s)
+[scan] 139,867,701 rows (26,423/s)
+[scan] 140,400,001 rows (26,362/s)
+[scan] 140,943,098 rows (26,316/s)
+[scan] 141,419,587 rows (26,258/s)
+[scan] 141,932,246 rows (26,207/s)
+[scan] 142,400,001 rows (26,147/s)
+[scan] 142,944,878 rows (26,103/s)
+[scan] 143,424,818 rows (26,048/s)
+[scan] 143,938,531 rows (26,000/s)
+[scan] 144,400,368 rows (25,942/s)
+[scan] 144,925,549 rows (25,897/s)
+[scan] 145,400,001 rows (25,840/s)
+[scan] 145,918,766 rows (25,795/s)
+[scan] 146,400,001 rows (25,737/s)
+[scan] 146,919,267 rows (25,693/s)
+[scan] 147,400,001 rows (25,630/s)
+[scan] 147,926,203 rows (25,588/s)
+[scan] 148,400,001 rows (25,534/s)
+[scan] 148,908,016 rows (25,490/s)
+[scan] 149,400,001 rows (25,435/s)
+[scan] 149,918,333 rows (25,393/s)
+[scan] 150,400,001 rows (25,340/s)
+[scan] 150,916,566 rows (25,300/s)
+[scan] 151,400,001 rows (25,244/s)
+[scan] 151,914,648 rows (25,204/s)
+[scan] 152,400,001 rows (25,148/s)
+[scan] 152,914,535 rows (25,109/s)
+[scan] 153,400,001 rows (25,059/s)
+[scan] 153,912,046 rows (25,020/s)
+[scan] 154,400,001 rows (24,971/s)
+[scan] 154,916,036 rows (24,934/s)
+[scan] 155,400,001 rows (24,885/s)
+[scan] 155,914,102 rows (24,848/s)
+[scan] 156,400,001 rows (24,802/s)
+[scan] 156,918,298 rows (24,766/s)
+[scan] 157,400,001 rows (24,714/s)
+[scan] 157,916,414 rows (24,679/s)
+[scan] 158,400,001 rows (24,634/s)
+[scan] 158,912,779 rows (24,599/s)
+[scan] 159,400,001 rows (24,553/s)
+[scan] 159,919,631 rows (24,520/s)
+[scan] 160,400,001 rows (24,476/s)
+[scan] 160,915,078 rows (24,443/s)
+[scan] 161,400,001 rows (24,400/s)
+[scan] 161,911,905 rows (24,367/s)
+[scan] 162,400,001 rows (24,327/s)
+[scan] 162,891,623 rows (24,292/s)
+[scan] 163,400,001 rows (24,250/s)
+[scan] 163,912,998 rows (24,218/s)
+[scan] 164,400,001 rows (24,178/s)
+[scan] 164,915,490 rows (24,147/s)
+[scan] 165,400,001 rows (24,107/s)
+[scan] 165,909,954 rows (24,076/s)
+[scan] 166,400,001 rows (24,036/s)
+[scan] 166,909,740 rows (24,006/s)
+[scan] DONE 33 parts, 167,157,950 rows, 764,743 flagged, 116.2 min
+[pagerank] nodes=10,798,347 dedup_edges=105,589,361
+[pagerank] iter 1: l1_delta=7.686e-01
+[pagerank] iter 2: l1_delta=3.288e-01
+[pagerank] iter 3: l1_delta=1.564e-01
+[pagerank] iter 4: l1_delta=8.262e-02
+[pagerank] iter 5: l1_delta=4.763e-02
+[pagerank] iter 6: l1_delta=2.799e-02
+[pagerank] iter 7: l1_delta=1.655e-02
+[pagerank] iter 8: l1_delta=9.835e-03
+[pagerank] iter 9: l1_delta=5.863e-03
+[pagerank] iter 10: l1_delta=3.503e-03
+[pagerank] iter 11: l1_delta=2.095e-03
+[pagerank] iter 12: l1_delta=1.249e-03
+[pagerank] iter 13: l1_delta=7.379e-04
+[pagerank] iter 14: l1_delta=4.393e-04
+[pagerank] iter 15: l1_delta=2.686e-04
+[pagerank] iter 16: l1_delta=1.663e-04
+[pagerank] iter 17: l1_delta=1.045e-04
+[pagerank] iter 18: l1_delta=6.684e-05
+[pagerank] iter 19: l1_delta=4.399e-05
+[pagerank] iter 20: l1_delta=3.011e-05
+[pagerank] iter 21: l1_delta=2.183e-05
+[pagerank] iter 22: l1_delta=1.634e-05
+[pagerank] iter 23: l1_delta=1.285e-05
+[pagerank] iter 24: l1_delta=1.039e-05
+[pagerank] iter 25: l1_delta=8.607e-06
+{
+  "nodes": 10798347,
+  "dedup_edges": 105589361,
+  "iters": 25,
+  "mass": 0.9999971424389269,
+  "top5": [
+    {
+      "id": 9423399,
+      "pr": 0.00102058
+    },
+    {
+      "id": 107423,
+      "pr": 0.00047615
+    },
+    {
+      "id": 9429592,
+      "pr": 0.00044844
+    },
+    {
+      "id": 85272,
+      "pr": 0.00040573
+    },
+    {
+      "id": 84978,
+      "pr": 0.00036768
+    }
+  ],
+  "minutes": 15.4
+}
+{
+  "rows": 10798347,
+  "pagerank_positive": 10798347,
+  "recent_positive": 793226,
+  "flagged": 764743,
+  "top5_by_pagerank": [
+    [
+      "Anders v. California",
+      0.00102058
+    ],
+    [
+      "Anders v. California",
+      0.00047615
+    ],
+    [
+      "Strickland v. Washington",
+      0.00044844
+    ],
+    [
+      "M'culloch v. State of Maryland",
+      0.00040573
+    ],
+    [
+      "Schooner Exchange v. McFaddon",
+      0.00036768
+    ]
+  ],
+  "minutes": 28.9
+}
+=== authority complete 2026-09-07T13:31:34Z ===
+statutes + statutes_fts ensured
+[ecfr] title 37 as of 2026-08-31 <- https://www.ecfr.gov/api/versioner/v1/full/2026-08-31/title-37.xml
+[ecfr] title 37: 1331 sections stored
+[ecfr] title 42 as of 2026-08-31 <- https://www.ecfr.gov/api/versioner/v1/full/2026-08-31/title-42.xml
+[ecfr] title 42: 7290 sections stored
+=== REPAIR COMPLETE 2026-09-07T13:31:41Z ===

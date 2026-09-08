@@ -3,12 +3,12 @@
 Everything here is measured against the `2026-06-30` CourtListener snapshot on
 this machine. Canon: `CLAUDE.md` §3–§4.
 
-## Result (measured 2026-08-22)
+## Result (rebuilt 2026-09-07, Phase 2 fixes; re-verified 2026-09-08)
 
 | table | rows |
 |---|---|
 | opinions | **10,798,347** (95.6% of the ~11.3M estimate — within gate ±10%) |
-| cites | **105,689,491** (77.5M from citation-map + ~28M anchor-only; 51.5M with char_pos+context) |
+| cites | **167,157,950** over **105,689,491** distinct pairs (77.5M citormap edges + all-context anchors: every in-text mention keeps its row, so treatment-bearing second mentions survive; distinct-pair count identical to the 2026-08-22 build) |
 | citation_strings | 18,123,788 |
 | parentheticals | 6,408,887 (+ FTS5) |
 | courts / judges | 3,361 / 16,191 |

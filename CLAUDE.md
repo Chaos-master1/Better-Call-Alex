@@ -66,7 +66,7 @@ opinions(id PK, cluster_id, court_id, date_filed, case_name, case_name_short,
          page_count, ocr, text)
 opinions_fts        -- FTS5(text, content='opinions', content_rowid='id',
                     --      tokenize='porter unicode61')
-cites(citing_id, cited_id, depth, char_pos, context)          -- ~132 M rows
+cites(citing_id, cited_id, depth, char_pos, context)          -- 167.2 M rows over 105.7 M distinct pairs (all-context anchors)
 citation_strings(cluster_id, volume, reporter, page, type)     -- "410 U.S. 113"
 parentheticals(described_id, describing_id, text, score)
 parentheticals_fts  -- FTS5
@@ -230,7 +230,7 @@ consistent with most clusters holding one opinion.
 <a href="/opinion/486398/ramon-chaparro-v-otis-r-bowen/#1011" …>
 ```
 
-Present on **82.2%** of opinions, averaging **12.0 links each** → ~132 M edges.
+Present on **82.2%** of opinions, averaging **12.0 links each** → 167.2 M cites rows over 105.7 M distinct pairs (measured 2026-09-07 rebuild).
 Each gives the target opinion id, the case name, the citation string as anchor
 text, and `#1011` star-page pin-cite anchors. Extract with
 `<a[^>]*href="/opinion/(\d+)/`, and keep `m.start()` as `char_pos` — the text
@@ -314,7 +314,7 @@ docs/
 etl/                   Python 3.12 via uv — runs once, never in production
   build_corpus.py      sharded by byte range, resumable
   build_authority.py   pagerank, recency, treatment flags — power iteration on
-                       scipy.sparse CSR (~132 M edges; NetworkX will not hold)
+                       scipy.sparse CSR (167 M rows scanned, 105.7 M distinct edges; NetworkX will not hold)
   statutes.py          eCFR (live) + US Code release points (G4)
   audit_g0.py          the G0 audit harness
   tests/
