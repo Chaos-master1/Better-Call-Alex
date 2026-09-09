@@ -7,7 +7,7 @@ Gate runner: `pnpm g2`. Unit tests: `pnpm test`.
 
 ## Verdict: G2 gate MET (2026-08-24)
 
-**Fabrication catch rate: 9/9 adversarial fixtures = 100%.**
+**Fabrication catch rate: 10/10 adversarial fixtures = 100%.**
 Treatment-scan recall against the Casetext/RegLab Overruling set
 (2,394 attorney-annotated sentences): **0.774 recall at 0.014 FPR**
 (after pattern extension; baseline scanner measured 0.525 / 0.011 —
@@ -19,7 +19,10 @@ the failing measurement that justified extending it).
 draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
            ──> resolve every FULL citation through citation_strings
            │     unresolved -> reject                        (§5.1)
-           ├──> extract quoted spans (straight + curly delimiters)
+           ├──> extract quoted spans (straight + curly double delimiters;
+           │     single-quoted spans under word-boundary guards — an
+           │     apostrophe inside a word can never delimit, so
+           │     possessives/contractions never extract)
            ├──> attribute each quote (nearest preceding verified cite,
            │     else nearest following within 300 chars)
            ├──> match quote vs cited opinion text (conservative ladder)
@@ -34,6 +37,9 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
 overall = fail iff any citation unresolved OR any quote unverified.
 Unverifiable content is REPORTED, never dropped — struck-through
 rendering happens in G3's UI on top of this report.
+Render gate (render.ts): a [LAW] sentence passes only with a pin cite
+that produced an extracted citation in its range — a pin the extractor
+saw nothing in (e.g. a bare number) fails closed, never vacuously.
 ```
 
 ## Quote-matching ladder (deliberately conservative)
@@ -54,7 +60,7 @@ that. Legitimate elision is supported only via explicit ellipsis marks.
 | category | n | expect | mechanism |
 |---|---|---|---|
 | fabricated_citation | 3 | fail | syntactically valid cite absent from citation_strings |
-| invented_quote | 2 | fail | plausible doctrinal sentence, asserted absent from cited text |
+| invented_quote | 3 | fail | plausible doctrinal sentence, asserted absent from cited text (incl. a single-quoted variant — single-quote fabrication passed unchecked before 2026-09-09) |
 | altered_quote | 2 | fail | one word substituted; absence machine-checked |
 | wrong_case_quote | 2 | fail | real quote attributed to another real case; report names the true source |
 | valid_passage / pin_annotated / block_quote / unsupported_short_form | 4 | pass | controls incl. annotations; block quote hard-wraps a verbatim span across newlines |
@@ -75,7 +81,7 @@ never depends on identification.
 
 | metric | value | source |
 |---|---|---|
-| fabrication catch rate | **100%** (9/9) | `pnpm g2`, this repo |
+| fabrication catch rate | **100%** (10/10) | `pnpm g2`, this repo |
 | treatment-language recall | **0.774** (941/1216) | LegalBench `overruling` test split — see note below |
 | treatment-language false-positive rate | **0.014** (16/1178) | same |
 | scanner extension delta | recall .525→.774, FPR .011→.014 | `disapprov*`, `supersed*`, `depart* from`, `no longer good law/controlling/followed/valid`; `reject` tested and excluded (+2pp recall for +1.3pp FPR) |

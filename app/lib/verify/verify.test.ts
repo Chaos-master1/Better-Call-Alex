@@ -111,6 +111,36 @@ test("block quotes spanning newlines are extracted", () => {
   assert.match(spans[0].quote, /line two continues/);
 });
 
+test("single-quoted spans extract under word-boundary guards", () => {
+  const spans = extractQuotedSpans("held that 'due process requires notice' here");
+  assert.deepEqual(
+    spans.map((s) => s.quote),
+    ["due process requires notice"]
+  );
+});
+
+test("curly single quotes extract", () => {
+  const spans = extractQuotedSpans("held that \u2018due process requires notice\u2019 here");
+  assert.deepEqual(
+    spans.map((s) => s.quote),
+    ["due process requires notice"]
+  );
+});
+
+test("possessives and contractions never delimit", () => {
+  assert.deepEqual(extractQuotedSpans("plaintiff's motion and defendants' claims"), []);
+  assert.deepEqual(extractQuotedSpans("don't stop believin'"), []);
+  assert.deepEqual(extractQuotedSpans("rock 'n' roll music band"), []);
+});
+
+test("singles nested in doubles are not double-reported", () => {
+  const spans = extractQuotedSpans(`she said "hello world today loudly" end`);
+  assert.equal(spans.length, 1);
+  const nested = extractQuotedSpans(`she said "the court held 'due process applies' today" end`);
+  assert.equal(nested.length, 1);
+  assert.match(nested[0].quote, /due process applies/);
+});
+
 test("probeFragment picks whole words off the edges", () => {
   const q = Array.from({ length: 40 }, (_, i) => `w${i}`).join(" ");
   const frag = probeFragment(q);
@@ -120,6 +150,35 @@ test("probeFragment picks whole words off the edges", () => {
   assert.ok(!frag.endsWith(" w39"), "last word must be dropped");
   assert.ok(frag.startsWith("w"), "no mid-word shards");
 });
+
+// ------------------------------------------------- pin cross-check
+
+test(
+  "LAW pin with no extractable citation fails closed",
+  { skip: !HAS_DB },
+  async () => {
+    const { verifyTaggedSentences } = await import("../render.js");
+    const db = openCorpus();
+    try {
+      const bad = verifyTaggedSentences(db, [
+        { tag: "LAW", text: "The Court requires notice.", pin_cite: "26065" },
+      ]);
+      assert.equal(bad.sentences[0].verified, false);
+      assert.equal(bad.overall, "fail");
+      assert.ok(
+        bad.sentences[0].detail.some((d) => d.includes("no extractable citation"))
+      );
+
+      // Control: a real pin still verifies.
+      const good = verifyTaggedSentences(db, [
+        { tag: "LAW", text: "The Court requires notice.", pin_cite: "410 U.S. 113" },
+      ]);
+      assert.equal(good.sentences[0].verified, true);
+    } finally {
+      db.close();
+    }
+  }
+);
 
 // -------------------------------------------------------------- resolver
 

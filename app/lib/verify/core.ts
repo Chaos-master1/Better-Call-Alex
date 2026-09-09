@@ -131,15 +131,34 @@ export function treatmentLabels(flags: number | null | undefined): string[] {
 // Straight and curly double-quote delimiters. /g is required by matchAll.
 const SPAN_RE = /["\u201c]([^"\u201c\u201d]{8,2000}?)["\u201d]/g;
 
+// Single-quote delimiters (straight + curly). An apostrophe inside a word
+// ("plaintiff's", "don't") can never delimit in either role: the opener
+// must follow start/whitespace/opening punctuation and the closer must
+// precede whitespace/closing punctuation/end. Without both guards,
+// possessive pairs ("dogs' ... cats'") would fake spans and fail real
+// text closed (G2 fixture invented_quote_single-15).
+const SINGLE_QUOTES = new Set(["'", "‘", "’"]);
+const SINGLE_OPENER_BEFORE = /[\s([{'"“‘—–-]/;
+const SINGLE_CLOSER_AFTER = /[\s.,;:!?)\]}"”’—–-]/;
+/** Quotable shape for a single-quoted span: long enough and multi-word,
+ *  so 'n', 's and other apostrophe debris never extract. */
+function singleQuotable(inner: string): boolean {
+  return inner.length >= 12 && inner.length <= 2000 && /\s/.test(inner);
+}
+
 /**
- * Straight + curly double-quoted spans of quotable length. Newlines are
- * allowed inside spans (block quotes); the lazy bound keeps a stray
- * opening delimiter from swallowing more than one paragraph-ish chunk.
+ * Straight + curly double-quoted spans of quotable length, plus guarded
+ * single-quoted spans. Newlines are allowed inside spans (block quotes);
+ * the lazy bound keeps a stray opening delimiter from swallowing more
+ * than one paragraph-ish chunk. A single-quoted span fully enclosed in a
+ * double-quoted span is skipped: the outer span already checks the same
+ * text, so a second check adds reports, not coverage.
  */
 export function extractQuotedSpans(
   text: string
 ): Array<{ quote: string; start: number; end: number }> {
   const out: Array<{ quote: string; start: number; end: number }> = [];
+  const doubleOuter: Array<[number, number]> = [];
   for (const m of text.matchAll(SPAN_RE)) {
     if (m.index === undefined) continue; // unreachable with a /g matchAll
     out.push({
@@ -147,7 +166,26 @@ export function extractQuotedSpans(
       start: m.index + 1, // past the opening delimiter
       end: m.index + m[0].length - 1, // before the closing delimiter
     });
+    doubleOuter.push([m.index, m.index + m[0].length - 1]);
   }
+  for (let i = 0; i < text.length; i++) {
+    if (!SINGLE_QUOTES.has(text[i])) continue;
+    if (i > 0 && !SINGLE_OPENER_BEFORE.test(text[i - 1])) continue;
+    // nearest following valid closer (lazy, parallel to the doubles);
+    // bounded so pathological quote runs cannot go quadratic.
+    for (let j = i + 1; j < text.length && j < i + 2100; j++) {
+      if (!SINGLE_QUOTES.has(text[j])) continue;
+      if (j + 1 < text.length && !SINGLE_CLOSER_AFTER.test(text[j + 1])) continue;
+      if (singleQuotable(text.slice(i + 1, j))) {
+        const enclosed = doubleOuter.some(([a, b]) => i >= a && j <= b);
+        if (!enclosed) {
+          out.push({ quote: text.slice(i + 1, j), start: i + 1, end: j });
+        }
+      }
+      break; // first valid closer wins, even if the span is unquotable
+    }
+  }
+  out.sort((a, b) => a.start - b.start);
   return out;
 }
 

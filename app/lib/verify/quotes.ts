@@ -82,9 +82,10 @@ function locate(
   return { start: hay.map[j], end: hay.map[j + needleNorm.length - 1] + 1 };
 }
 
-// Legal elision marks: … ... […] (...) (…) — single-quote spans are
-// deliberately NOT extracted (apostrophes collide: "plaintiff's motion"
-// between two possessives would fake a span and fail closed on real text).
+// Legal elision marks: … ... […] (...) (…). Single-quoted spans ARE
+// extracted (by extractQuotedSpans in core.ts) under word-boundary guards
+// on both delimiters, so intra-word apostrophes ("plaintiff's", "don't")
+// can never delimit — G2 fixture invented_quote_single-15.
 const ELLIPSIS_SPLIT = /(?:\u2026|\.\.\.|\[\u2026\]|\(\u2026\)|\[\.\.\.\]|\(\.\.\.\))/;
 
 export function findQuote(text: string, quote: string): QuoteResult {

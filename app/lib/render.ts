@@ -162,6 +162,14 @@ function crossReference(
       detail.push("LAW sentence without pin cite → unverified");
       verified = false;
     }
+    // [LAW] with a pin cite the extractor saw nothing in: the pin field
+    // claims authority the verifier never checked (e.g. a bare "(26065)"),
+    // which would otherwise pass vacuously. The pin must correspond to an
+    // extracted citation in this sentence's range. §5.1.
+    if (s.tag === "LAW" && s.pin_cite && cits.length === 0) {
+      detail.push(`pin cite '${s.pin_cite}' produced no extractable citation → unverified`);
+      verified = false;
+    }
     return {
       index: i,
       tag: s.tag,

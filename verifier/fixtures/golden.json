@@ -124,6 +124,15 @@
         "\"inferred_treatment\":[",
         "\"overruled\""
       ]
+    },
+    {
+      "id": "invented_quote_single-15",
+      "category": "invented_quote",
+      "text": "Roe stands for the proposition that. 410 U.S. 113 establishes: 'The Court announced a rigid trimester framework permitting states to regulate abortion only after fetal viability has been clearly established.'",
+      "expect_overall": "fail",
+      "expect_contains": [
+        "quote_not_found"
+      ]
     }
   ]
 }
