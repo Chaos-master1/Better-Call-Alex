@@ -30,5 +30,8 @@
     "ollama": "^0.5.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
+  },
+  "bin": {
+    "alex": "./bin/alex"
   }
 }

@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-09-09T10:56:10.079Z",
+  "offline": true,
+  "patterns": 5,
+  "results": [
+    {
+      "id": "g3-01-motel-1983",
+      "status": "skipped-offline",
+      "ms": 0
+    },
+    {
+      "id": "g3-02-terry-stop",
+      "status": "skipped-offline",
+      "ms": 0
+    },
+    {
+      "id": "g3-03-tarasoff",
+      "status": "skipped-offline",
+      "ms": 0
+    },
+    {
+      "id": "g3-04-personal-jurisdiction",
+      "status": "skipped-offline",
+      "ms": 0
+    },
+    {
+      "id": "g3-05-regulatory-taking",
+      "status": "skipped-offline",
+      "ms": 0
+    }
+  ],
+  "overall": "pass"
+}

@@ -1,0 +1,45 @@
+=== pull start 2026-09-08T13:07:57Z ===
+[?2026h[?25l[1Gpulling manifest ⠋ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠙ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠹ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠸ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠼ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠴ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠦ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠧ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠇ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest [K
+pulling dec52a44569a: 100% ▕██████████████████▏ 6.6 GB                         [K
+pulling 7339fa418c9a: 100% ▕██████████████████▏  11 KB                         [K
+pulling 9371364b27a5: 100% ▕██████████████████▏   65 B                         [K
+pulling be595b49fe22: 100% ▕██████████████████▏  475 B                         [K
+verifying sha256 digest [K
+writing manifest [K
+success [K[?25h[?2026l
+qwen3.5:9b OK 2026-09-08T13:07:58Z
+[?2026h[?25l[1Gpulling manifest ⠋ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠙ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠹ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠸ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠼ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠴ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest ⠦ [K[?25h[?2026l[?2026h[?25l[1Gpulling manifest [K
+pulling a8cc1361f314: 100% ▕██████████████████▏ 9.3 GB                         [K
+pulling ae370d884f10: 100% ▕██████████████████▏ 1.7 KB                         [K
+pulling d18a5cc71b84: 100% ▕██████████████████▏  11 KB                         [K
+pulling cff3f395ef37: 100% ▕██████████████████▏  120 B                         [K
+pulling 78b3b822087d: 100% ▕██████████████████▏  488 B                         [K
+verifying sha256 digest [K
+writing manifest [K
+success [K[?25h[?2026l
+qwen3:14b OK 2026-09-08T13:07:59Z
+NAME                       ID              SIZE      MODIFIED               
+qwen3:14b                  bdbd181c33f2    9.3 GB    Less than a second ago    
+qwen3.5:9b                 6488c96fa5fa    6.6 GB    Less than a second ago    
+llama3.2-vision:latest     6f2f9757ae97    7.8 GB    6 days ago                
+llama3.1:latest            46e0c10c039e    4.9 GB    6 days ago                
+glm-ocr:latest             6effedd0dc8a    2.2 GB    6 days ago                
+minicpm-v4.6:latest        e95583acac77    1.6 GB    6 days ago                
+qwen3-vl:latest            901cae732162    6.1 GB    6 days ago                
+minicpm-v4.5:latest        0c40168f46d1    6.1 GB    7 days ago                
+llama3.2:latest            a80c4f17acd5    2.0 GB    7 days ago                
+phi4:latest                ac896e5b8b34    9.1 GB    7 days ago                
+deepseek-ocr:latest        0e7b018b8a22    6.7 GB    7 days ago                
+embeddinggemma:latest      85462619ee72    621 MB    7 days ago                
+lfm2:latest                d6c816d74887    14 GB     7 days ago                
+lfm2.5:latest              9cf756159fc2    5.2 GB    7 days ago                
+gemma4:latest              c6eb396dbd59    9.6 GB    7 days ago                
+lfm2.5-thinking:latest     95bd9d45385f    731 MB    7 days ago                
+granite4.2:latest          f586c02fdecd    5.3 GB    7 days ago                
+qwen3.8:27b                22130167c4c2    17 GB     7 days ago                
+translategemma:12b         c2f9a9ca1ec7    8.1 GB    7 days ago                
+ornith-1.5:9b              e5df7dcdd8a2    6.6 GB    10 days ago               
+nomic-embed-text:latest    0a109f422b47    274 MB    12 days ago               
+qwen3-vl:8b                901cae732162    6.1 GB    2 weeks ago               
+deepseek-r1:14b            c333b7232bdb    9.0 GB    2 weeks ago               
+=== pull done 2026-09-08T13:07:59Z ===

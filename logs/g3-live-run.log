@@ -1,0 +1,29 @@
+$ tsx ../evals/run_g3.ts
+pre-flight: audit_log append-only trigger ✓
+
+— g3-01-motel-1983 Motel public-accommodations / §1983 state action —
+[llm] OLLAMA_KV_CACHE_TYPE is not set in the daemon's environment. Export q8_0 before starting Ollama — the canonical setting for the 12 GB VRAM budget.
+[llm] generate(qwen3:14b) transient (fetch failed) — retry 1/3 in 1874ms
+[llm] generate(qwen3:14b) transient (fetch failed) — retry 2/3 in 3232ms
+  retry 1/2 after transient: fetch failed — waiting 15s
+  note: wall-clock 1465030ms exceeds hard budget 600000ms (model-bound, warn only)
+  PASS  9/14 verified  overall=fail  adversary=5  1465030ms
+
+— g3-02-terry-stop Terry stop-and-frisk, reasonable suspicion —
+  note: wall-clock 403468ms exceeds 60s demo target (model-bound, warn only)
+  PASS  16/16 verified  overall=pass  adversary=5  403468ms
+
+— g3-03-tarasoff Psychotherapist duty to warn (California) —
+  note: wall-clock 332196ms exceeds 60s demo target (model-bound, warn only)
+  PASS  8/11 verified  overall=fail  adversary=5  332196ms
+
+— g3-04-personal-jurisdiction Personal jurisdiction, minimum contacts / stream of commerce —
+  note: wall-clock 454260ms exceeds 60s demo target (model-bound, warn only)
+  PASS  13/19 verified  overall=fail  adversary=5  454260ms
+
+— g3-05-regulatory-taking Regulatory taking, just compensation —
+  note: wall-clock 361558ms exceeds 60s demo target (model-bound, warn only)
+  PASS  6/9 verified  overall=fail  adversary=5  361558ms
+
+G3 report → logs/g3-report.json  overall=pass
+G3 GATE: PASS — five patterns gated (or skipped offline) correctly

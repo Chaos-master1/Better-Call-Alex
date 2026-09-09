@@ -1,0 +1,12 @@
+#!/bin/sh
+# `alex` executable (package.json `bin` entry). Delegates to tsx so the
+# TypeScript CLI runs without a build step. Installed on `pnpm install`
+# via the bin link; otherwise use `pnpm alex ...` from app/.
+# Prefer the repo-local tsx so direct `./bin/alex` works without tsx on PATH.
+BIN_DIR="$(dirname "$0")"
+if [ -x "$BIN_DIR/../node_modules/.bin/tsx" ]; then
+  TSX="$BIN_DIR/../node_modules/.bin/tsx"
+else
+  TSX="tsx"
+fi
+exec "$TSX" "$BIN_DIR/../cli.ts" "$@"
