@@ -77,6 +77,20 @@ function splitLines(text: string): string[] {
  * Pure planner: DraftDoc → ordered blocks. Deterministic, no I/O, no DB.
  * Unit-tested in export_docx.test.ts (corpus-free, like statute.test.ts).
  */
+/** One human-readable verification line for the document status block. */
+function verificationLine(drafted: DraftDoc): string {
+  const v = drafted.verification.verdict;
+  if (!v) {
+    return `Generated ${drafted.generated_at} · verification: ${drafted.verification.overall}`;
+  }
+  return (
+    `Generated ${drafted.generated_at} · verification: ${v.overall.toUpperCase()} — ` +
+    `sentences ${v.sentences_verified}/${v.sentences_total} verified, ` +
+    `citations ${v.citations_verified}/${v.citations_extracted} resolved, ` +
+    `quotes ${v.quotes_verified}/${v.quotes_checked} matched`
+  );
+}
+
 export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
   const blocks: PlannedBlock[] = [];
   // §11: banner applied at the render/export layer in code, first thing out.
@@ -85,7 +99,7 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
   if (drafted.caption) blocks.push({ kind: "caption", text: drafted.caption });
   blocks.push({
     kind: "meta",
-    text: `Generated ${drafted.generated_at} · verification: ${drafted.verification.overall} · ${JSON.stringify(drafted.verification.summary)}`,
+    text: verificationLine(drafted),
   });
 
   blocks.push({ kind: "heading", text: "Issues, Rules, Analysis, Conclusion" });

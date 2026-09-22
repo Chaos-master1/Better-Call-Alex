@@ -29,7 +29,7 @@
  */
 import type Database from "better-sqlite3";
 import { resolveCluster, type LookupResult } from "../db.js";
-import { findQuote } from "./quotes.js";
+import { findQuote, findQuoteGen } from "./quotes.js";
 import {
   parseStatuteCites,
   resolveStatute,
@@ -235,11 +235,13 @@ export function probeFragment(quote: string, targetWords = 10): string {
   return words.slice(start, start + n).join(" ");
 }
 
-function findTrueSource(
+function* findTrueSource(
   db: Database.Database,
   quote: string,
-  excludeCluster: number | null
-): QuoteCheck["true_source"] {
+  excludeCluster: number | null,
+  quoteMemo: Map<string, ReturnType<typeof findQuote>>,
+  quoteMemoKey: (sourceText: string, quote: string) => string
+): Generator<void, QuoteCheck["true_source"], void> {
   const frag = probeFragment(quote);
   const tokenize = (s: string) =>
     s.toLowerCase().split(/[^a-z0-9']+/).filter((t) => t.length > 2 && t !== "the");
@@ -274,13 +276,28 @@ function findTrueSource(
   for (const expr of exprs) {
     // Wide scan: rejected-quote attribution is rare, and generic prose
     // fragments rank the true source deep in the bm25 order — so cast a
-    // broad net before giving up on identification.
-    const ranked = db
-      .prepare(
-        `SELECT rowid AS id FROM opinions_fts WHERE opinions_fts MATCH ?
-         ORDER BY bm25(opinions_fts) LIMIT 60`
-      )
-      .all(expr) as Array<{ id: number }>;
+    // broad net before giving up on identification. The bm25 phrase scan
+    // is one synchronous statement over a huge index (measured 0.8–2.1s),
+    // so it is its own scheduling unit; the per-database cache means a
+    // repeated scan of the same expression skips it entirely. WeakMap so
+    // a closed corpus (tests build fresh :memory: DBs per case) drops its
+    // entries and results can never leak across databases.
+    yield;
+    let cache = ftsRankedCache.get(db);
+    if (!cache) {
+      cache = new Map();
+      ftsRankedCache.set(db, cache);
+    }
+    let ranked = cache.get(expr);
+    if (!ranked) {
+      ranked = db
+        .prepare(
+          `SELECT rowid AS id FROM opinions_fts WHERE opinions_fts MATCH ?
+           ORDER BY bm25(opinions_fts) LIMIT 60`
+        )
+        .all(expr) as Array<{ id: number }>;
+      cache.set(expr, ranked);
+    }
     for (const { id } of ranked) {
       if (seen.has(id)) continue;
       seen.add(id);
@@ -292,12 +309,18 @@ function findTrueSource(
         | { id: number; cluster_id: number; case_name: string; court_id: string }
         | undefined;
       if (!meta || meta.cluster_id === excludeCluster) continue;
-      const row = db.prepare("SELECT text FROM opinions WHERE id = ?").get(id) as
-        | { text: string }
-        | undefined;
-      if (!row) continue;
+      // The chunked read is exact but may yield internally; the extra
+      // yield keeps one scheduling point per candidate regardless.
+      const text = yield* readOpinionTextGen(db, id);
+      if (text == null) continue;
       checked++;
-      const m = findQuote(row.text, quote);
+      yield;
+      const pKey = quoteMemoKey(text, quote);
+      let m = quoteMemo.get(pKey);
+      if (!m) {
+        m = yield* findQuoteGen(text, quote);
+        quoteMemo.set(pKey, m);
+      }
       if (!m.found) continue;
       // Among opinions containing the span verbatim, prefer SCOTUS and
       // higher-authority sources (duplicate texts and quoters exist).
@@ -337,6 +360,46 @@ function ftsPhraseExpr(terms: string[]): string {
   return terms.map((t) => `"${t.replace(/"/g, "")}"`).join(" ");
 }
 
+/** Per-database cache of expensive pure bm25 ranked scans (see use). */
+const ftsRankedCache = new WeakMap<Database.Database, Map<string, Array<{ id: number }>>>();
+
+/** Bytes of opinion text fetched per scheduling unit. */
+const OPINION_CHUNK = 1 << 20;
+
+/**
+ * Chunked opinion-text read — better-sqlite3 delivers a row in one
+ * synchronous gulp, and a multi-megabyte opinion would stall the event
+ * loop for the whole blob. `substr` windows make each ~1 MiB its own
+ * scheduling unit (the async drain yields between them; the sync drain is
+ * uninterrupted and byte-identical). Returns null when the row is absent.
+ */
+export function* readOpinionTextGen(
+  db: Database.Database,
+  id: number
+): Generator<void, string | null, void> {
+  const lenRow = db
+    .prepare("SELECT length(text) AS len FROM opinions WHERE id = ?")
+    .get(id) as { len: number | null } | undefined;
+  if (!lenRow || lenRow.len == null) return null;
+  const total = lenRow.len;
+  if (total <= OPINION_CHUNK) {
+    const row = db
+      .prepare("SELECT text FROM opinions WHERE id = ?")
+      .get(id) as { text: string } | undefined;
+    return row?.text ?? null;
+  }
+  const stmt = db.prepare(
+    "SELECT substr(text, ?, ?) AS chunk FROM opinions WHERE id = ?"
+  );
+  let out = "";
+  for (let pos = 1; pos <= total; pos += OPINION_CHUNK) {
+    const { chunk } = stmt.get(pos, OPINION_CHUNK, id) as { chunk: string };
+    out += chunk;
+    yield;
+  }
+  return out;
+}
+
 export interface AnalyzeOptions {
   /** Char ranges (e.g. [RECORD] sentences) whose quoted spans are the
    *  client's own facts, not corpus claims — quote checks are skipped for
@@ -361,12 +424,30 @@ function inSkippedRange(
  * entries — an entry carrying `error` becomes an `unresolved_citation`
  * check so a failed extraction fails the draft instead of vanishing.
  */
-export function analyzeCitationsAndQuotes(
+/** FNV-1a — memo keys only; never security-relevant. */
+function hashString(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+export function* analyzeCitationsAndQuotesGen(
   db: Database.Database,
   extracted: BridgeCitation[],
   text: string,
   opts: AnalyzeOptions = {}
-): VerificationReport {
+): Generator<void, VerificationReport, void> {
+  // Per-analysis memo: identical quote spans (verbatim repeats, a draft
+  // leaning on one authority) must not pay for the same source scan twice.
+  // Scoped to this call so results can never leak across corpora.
+  const quoteMemo = new Map<string, ReturnType<typeof findQuote>>();
+  const quoteMemoKey = (sourceText: string, quote: string) =>
+    `${quote}\u0000${sourceText.length}:${sourceText.length > 512 ? hashString(sourceText) : sourceText}`;
+  const trueSourceMemo = new Map<string, QuoteCheck["true_source"]>();
+
   // ---- citations ---------------------------------------------------------
   const citations: CitationCheck[] = [];
   // Statutory cites (G4): eyecite does not carry them, so they are detected
@@ -378,6 +459,7 @@ export function analyzeCitationsAndQuotes(
   const overlapsStatute = (start: number, end: number): boolean =>
     statuteHits.some((s) => start < s.end && end > s.start);
   for (const c of extracted) {
+    yield; // cooperative scheduling point (see async drain)
     if (c.error) {
       // One bad draft must not fail a batch — but it must not pass
       // silently either. Surface it as an unresolvable citation.
@@ -492,6 +574,7 @@ export function analyzeCitationsAndQuotes(
   // Statutory citations, resolved against the statutes table. A quoted
   // statute is checked by the quote ladder below, attributed to this check.
   for (const s of statuteHits) {
+    yield;
     const row = resolveStatute(db, s.source, s.title, s.section);
     const reporter = s.source === ("usc" as StatuteSource) ? "U.S.C." : "C.F.R.";
     // A subsection pin ("§ 1983(a)") rides after the cite; like case pin
@@ -516,6 +599,7 @@ export function analyzeCitationsAndQuotes(
   const spans = extractQuotedSpans(text);
   const quotes: QuoteCheck[] = [];
   for (const span of spans) {
+    yield;
     // [RECORD] content quotes the client's own facts; it is not a corpus
     // claim (§5.3) and has no citation to attribute to.
     if (inSkippedRange(span.start, span.end, opts.skipQuoteRanges)) continue;
@@ -569,12 +653,15 @@ export function analyzeCitationsAndQuotes(
         .get(target.statute_id) as { text: string } | undefined;
       sourceText = row?.text ?? "";
     } else {
-      const row = db
-        .prepare("SELECT text FROM opinions WHERE id = ?")
-        .get(target.opinion_id) as { text: string } | undefined;
-      sourceText = row?.text ?? "";
+      const loaded = yield* readOpinionTextGen(db, target.opinion_id!);
+      sourceText = loaded ?? "";
     }
-    const m = findQuote(sourceText, span.quote);
+    const mKey = quoteMemoKey(sourceText, span.quote);
+    let m = quoteMemo.get(mKey);
+    if (!m) {
+      m = yield* findQuoteGen(sourceText, span.quote);
+      quoteMemo.set(mKey, m);
+    }
     if (m.found) {
       quotes.push({
         quote: span.quote,
@@ -604,22 +691,33 @@ export function analyzeCitationsAndQuotes(
     let sibVerified = false;
     if (target.statute_id == null && clusterIds.length > 0) {
       const placeholders = clusterIds.map(() => "?").join(",");
+      // Ids only — texts load through the chunked reader below (one blob
+      // per scheduling unit) instead of one giant synchronous .all().
       const sibs = db
         .prepare(
-          `SELECT id, cluster_id, case_name, text FROM opinions
+          `SELECT id, cluster_id, case_name FROM opinions
            WHERE cluster_id IN (${placeholders}) AND id != ? AND blocked = 0`
         )
         .all(...clusterIds, target.opinion_id) as Array<{
         id: number;
         cluster_id: number;
         case_name: string | null;
-        text: string;
       }>;
       // Sibling candidates are the cluster's LIVE opinions: verification
       // never silently relies on de-indexed (blocked) text — same contract
       // as findTrueSource, which never names a blocked opinion.
       for (const sib of sibs) {
-        const sm = findQuote(sib.text, span.quote);
+        // One sibling opinion is one scheduling unit — its chunked read
+        // plus findQuote may each yield internally.
+        yield;
+        const text = yield* readOpinionTextGen(db, sib.id);
+        if (text == null) continue;
+        const sKey = quoteMemoKey(text, span.quote);
+        let sm = quoteMemo.get(sKey);
+        if (!sm) {
+          sm = yield* findQuoteGen(text, span.quote);
+          quoteMemo.set(sKey, sm);
+        }
         if (!sm.found) continue;
         quotes.push({
           quote: span.quote,
@@ -652,9 +750,20 @@ export function analyzeCitationsAndQuotes(
     //   • the corpus has the span in some OTHER case → quote_wrong_case
     //     (fail with the true source shown);
     //   • nowhere at all → plain quote_not_found.
-    const source = target.statute_id != null
-      ? undefined
-      : findTrueSource(db, span.quote, null);
+    let source: QuoteCheck["true_source"];
+    if (target.statute_id != null) {
+      source = undefined;
+    } else {
+      // Memoized true-source probing: a draft that fails N quotes of the
+      // same span probes N×90 candidates — identical work each time.
+      const key = `${span.quote}\u0000`;
+      if (trueSourceMemo.has(key)) {
+        source = trueSourceMemo.get(key);
+      } else {
+        source = yield* findTrueSource(db, span.quote, null, quoteMemo, quoteMemoKey);
+        trueSourceMemo.set(key, source);
+      }
+    }
     if (source && clusterIds.includes(source.cluster_id)) {
       quotes.push({
         quote: span.quote,
@@ -695,4 +804,40 @@ export function analyzeCitationsAndQuotes(
     quotes,
     summary,
   };
+}
+
+/**
+ * Sync drain — byte-identical to running the analysis as one direct
+ * function (tests, G2 evals, offline audits all keep this contract).
+ */
+export function analyzeCitationsAndQuotes(
+  db: Database.Database,
+  extracted: BridgeCitation[],
+  text: string,
+  opts: AnalyzeOptions = {}
+): VerificationReport {
+  const gen = analyzeCitationsAndQuotesGen(db, extracted, text, opts);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * Cooperative drain — same result, but the event loop gets a turn between
+ * analysis units, so a large verification (CiteGuard, the pipeline) can no
+ * longer pin the single-threaded server for the full duration.
+ */
+export async function analyzeCitationsAndQuotesAsync(
+  db: Database.Database,
+  extracted: BridgeCitation[],
+  text: string,
+  opts: AnalyzeOptions = {}
+): Promise<VerificationReport> {
+  const gen = analyzeCitationsAndQuotesGen(db, extracted, text, opts);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }

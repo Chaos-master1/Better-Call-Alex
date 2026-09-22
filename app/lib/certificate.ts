@@ -43,6 +43,18 @@ export interface VerificationCertificate {
   audit_row_id: number | null;
   overall: "pass" | "fail";
   summary: Record<string, number>;
+  /** Structured verdict breakdown; present when the draft was rendered by
+   *  a verdict-aware build (optional — older artifacts stay valid). */
+  verdict?: {
+    sentences_total: number;
+    sentences_verified: number;
+    sentences_struck: number;
+    citations_extracted: number;
+    citations_verified: number;
+    quotes_checked: number;
+    quotes_verified: number;
+    failures: Array<{ index: number; tag: string; reason: string }>;
+  };
   banner: string;
   /** Per-citation proof (the appendix, with verification verdicts). */
   citations: CertificateCitation[];
@@ -70,7 +82,20 @@ export function sha256Hex(text: string): string {
 export interface CertifiableDraft {
   banner: string;
   title: string;
-  verification: { overall: string; summary: Record<string, number> };
+  verification: {
+    overall: string;
+    summary: Record<string, number>;
+    verdict?: {
+      sentences_total: number;
+      sentences_verified: number;
+      sentences_struck: number;
+      citations_extracted: number;
+      citations_verified: number;
+      quotes_checked: number;
+      quotes_verified: number;
+      failures: Array<{ index: number; tag: string; reason: string }>;
+    };
+  };
   authority_appendix: Array<{
     citation: string;
     case_name: string | null;
@@ -106,6 +131,7 @@ export function buildVerificationCertificate(
     ambiguous: !!a.ambiguous,
   }));
   const overall = drafted.verification?.overall === "pass" ? "pass" : "fail";
+  const verdict = drafted.verification?.verdict;
   return {
     schema: "alex-verification-certificate/v1",
     issued_at: opts.generatedAt ?? new Date().toISOString(),
@@ -115,6 +141,7 @@ export function buildVerificationCertificate(
     audit_row_id: opts.auditRowId,
     overall,
     summary: drafted.verification?.summary ?? {},
+    ...(verdict ? { verdict } : {}),
     banner: drafted.banner,
     citations,
     engines: opts.engines,

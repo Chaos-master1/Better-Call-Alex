@@ -52,6 +52,22 @@ export interface VerifiedSentence {
   inferred: boolean;
 }
 
+/** Why the draft failed (or fully passed), at structured granularity.
+ *  The binary `overall` stays for the export gate and history badges; this
+ *  is the honest breakdown a reviewer actually needs: which checks ran,
+ *  how many passed, and exactly which sentences failed and why. */
+export interface DraftVerdict {
+  overall: "pass" | "fail";
+  sentences_total: number;
+  sentences_verified: number;
+  sentences_struck: number;
+  citations_extracted: number;
+  citations_verified: number;
+  quotes_checked: number;
+  quotes_verified: number;
+  failures: Array<{ index: number; tag: ClaimTag; reason: string }>;
+}
+
 export interface RenderedDraft {
   /** Plain-text draft, the same string passed to the verifier. */
   draft: string;
@@ -61,6 +77,8 @@ export interface RenderedDraft {
   report: VerificationReport;
   /** Overall: pass iff every sentence verified AND every [LAW] sentence has a pin cite. */
   overall: "pass" | "fail";
+  /** Structured breakdown of the verdict (see DraftVerdict). */
+  verdict: DraftVerdict;
 }
 
 /** §5.3 gate: every sentence MUST carry a known tag. Unknown or missing =
@@ -203,7 +221,20 @@ function crossReference(
     report.overall === "pass" && bySentence.every((s) => s.verified)
       ? "pass"
       : "fail";
-  return { draft, sentences: bySentence, report, overall };
+  const verdict: DraftVerdict = {
+    overall,
+    sentences_total: bySentence.length,
+    sentences_verified: bySentence.filter((s) => s.verified).length,
+    sentences_struck: bySentence.filter((s) => !s.verified).length,
+    citations_extracted: report.citations.length,
+    citations_verified: report.citations.filter((c) => c.status === "verified").length,
+    quotes_checked: report.quotes.length,
+    quotes_verified: report.quotes.filter((q) => q.status === "verified").length,
+    failures: bySentence
+      .filter((s) => !s.verified)
+      .map((s) => ({ index: s.index, tag: s.tag, reason: s.detail.join(" · ") })),
+  };
+  return { draft, sentences: bySentence, report, overall, verdict };
 }
 
 /**

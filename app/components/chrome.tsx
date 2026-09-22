@@ -100,6 +100,8 @@ export function Composer({
   setFacts,
   forum,
   setForum,
+  redact,
+  setRedact,
   engineMode,
   setEngineMode,
   engineInfo,
@@ -112,6 +114,9 @@ export function Composer({
   setFacts: (v: string) => void;
   forum: string;
   setForum: (v: string) => void;
+  /** Party names redacted from cloud payloads (ADR-004 §2.4). */
+  redact: string;
+  setRedact: (v: string) => void;
   /** ADR-004 per-run engine choice. */
   engineMode: string;
   setEngineMode: (v: string) => void;
@@ -181,6 +186,22 @@ export function Composer({
           <p className="ax-hint">
             Narrows retrieval when it matches a real court; ignored when it
             doesn&apos;t — never silently empties results.
+          </p>
+        </div>
+        <div className="ax-field">
+          <label htmlFor="ax-redact">Redact parties in cloud mode (optional)</label>
+          <input
+            id="ax-redact"
+            className="ax-input"
+            value={redact}
+            maxLength={600}
+            onChange={(e) => setRedact(e.target.value)}
+            placeholder="e.g. Jane Rivera, Acme Corp"
+          />
+          <p className="ax-hint">
+            Comma-separated. Names become [PARTY n] in any cloud-bound
+            payload and are restored in your draft — they never leave this
+            machine. Ignored in local mode (nothing leaves anyway).
           </p>
         </div>
         <div className="ax-field">

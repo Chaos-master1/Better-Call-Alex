@@ -10,7 +10,7 @@ import type Database from "better-sqlite3";
 import { resolveRepo } from "../repo.js";
 import { pythonBin } from "./verify.js";
 import {
-  analyzeCitationsAndQuotes,
+  analyzeCitationsAndQuotesAsync,
   bridgeErrorEntry,
   type AnalyzeOptions,
   type BridgeCitation,
@@ -76,5 +76,5 @@ export async function verifyTextAsync(
   opts: AnalyzeOptions = {}
 ): Promise<VerificationReport> {
   const extracted = await runBridgeAsync(text);
-  return analyzeCitationsAndQuotes(db, extracted, text, opts);
+  return analyzeCitationsAndQuotesAsync(db, extracted, text, opts);
 }

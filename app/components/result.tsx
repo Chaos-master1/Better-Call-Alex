@@ -187,6 +187,24 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
           {pass ? "✓" : "✗"} {out.draft.overall.toUpperCase()} · {verified}/
           {total} verified
         </span>
+        {out.drafted.verification.verdict && (
+          <span className="ax-meta">
+            citations{" "}
+            {out.drafted.verification.verdict.citations_verified}/
+            {out.drafted.verification.verdict.citations_extracted} resolved ·
+            quotes {out.drafted.verification.verdict.quotes_verified}/
+            {out.drafted.verification.verdict.quotes_checked} matched
+            {out.drafted.verification.verdict.failures.length > 0 && (
+              <>
+                {" "}· {out.drafted.verification.verdict.failures.length}{" "}
+                struck:{" "}
+                {out.drafted.verification.verdict.failures
+                  .map((f) => `#${f.index} ${f.reason.split("→")[0].trim()}`)
+                  .join("; ")}
+              </>
+            )}
+          </span>
+        )}
         <span className="ax-meta">
           {(out.ms / 1000).toFixed(1)}s · run {out.run_id} ·{" "}
           {out.drafted.generated_at}

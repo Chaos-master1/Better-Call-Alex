@@ -30,12 +30,14 @@ import {
   setRunMode,
   consumeFallbackEvent,
   resetEngineToLocal,
+  setCloudPayloadTransform,
   RESIDENT_MODEL,
   ANALYST_MODEL,
   engineQualifiedModel,
   type EngineId,
   type EngineMode,
 } from "../llm.js";
+import { createPayloadGuard, type PayloadGuard } from "./payload.js";
 import {
   IRAC_FIELDS,
   iracSentence,
@@ -87,6 +89,11 @@ export interface RunOptions {
   /** Cloud failure policy for this run: "abort" (default, honest) or
    *  "local" (disclosed fallback — audit row + UI badge, never silent). */
   cloudFallback?: "abort" | "local";
+  /** Party names to redact from CLOUD payloads (ADR-004 §2.4): replaced
+   *  with [PARTY n] placeholders before any bytes leave the machine and
+   *  rehydrated in the returned draft. Local mode is untouched (the guard
+   *  only runs in the cloud transform). The audit records counts only. */
+  redactParties?: string[];
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -119,6 +126,11 @@ export async function runCase(
   // the env default stands. Restored in finally so a server process never
   // leaks one run's override into the next.
   setRunMode(opts.engineMode ?? null);
+  // Cloud payload protections live for exactly this run (cleared in the
+  // finally): redaction + caps apply INSIDE the llm seam, where the routed
+  // engine is known — local prompts ride through untouched.
+  const guard = createPayloadGuard(opts.redactParties ?? []);
+  setCloudPayloadTransform(guard.transform);
   const engines: Array<{ stage: string; engine: EngineId; model: string }> = [];
   try {
     // The running row is created BEFORE any fallible work: a pre-intake
@@ -138,7 +150,7 @@ export async function runCase(
     persistIntake(appDb, caseId, intake, intakeModel);
     engines.push({ stage: "intake", engine: intakeEngine, model: intakeModel });
     audit(appDb, "agent.intake", { caseId, engine: intakeEngine, model: intakeModel }, caseId);
-    auditFallback(appDb, caseId, "intake");
+    auditFallback(appDb, caseId, "intake", engines);
 
     // 2. researcher — stays LOCAL in the default auto route: it writes
     //    queries for OUR FTS dialect (phrase dictionary, AND semantics);
@@ -150,7 +162,7 @@ export async function runCase(
     const researchModel = engineQualifiedModel(researchEngine, RESIDENT_MODEL);
     engines.push({ stage: "researcher", engine: researchEngine, model: researchModel });
     audit(appDb, "agent.researcher", { caseId, hits: research.hits.length, engine: researchEngine, model: researchModel }, caseId);
-    auditFallback(appDb, caseId, "researcher");
+    auditFallback(appDb, caseId, "researcher", engines);
 
     // 3. analyst + adversary pass — the reasoning-heavy stages. Local tier:
     //    swap to 14b (useModel no-ops under the cloud engine).
@@ -163,7 +175,7 @@ export async function runCase(
     persistAnalyst(appDb, caseId, analyst, analystModel);
     engines.push({ stage: "analyst", engine: analystEngine, model: analystModel });
     audit(appDb, "agent.analyst", { caseId, engine: analystEngine, model: analystModel }, caseId);
-    auditFallback(appDb, caseId, "analyst");
+    auditFallback(appDb, caseId, "analyst", engines);
 
     throwIfAborted(opts.signal);
     const adversaryEngine = await useEngine("auto", "adversary");
@@ -173,7 +185,7 @@ export async function runCase(
     persistAdversary(appDb, caseId, adversary, adversaryModel);
     engines.push({ stage: "adversary", engine: adversaryEngine, model: adversaryModel });
     audit(appDb, "agent.adversary", { caseId, engine: adversaryEngine, model: adversaryModel }, caseId);
-    auditFallback(appDb, caseId, "adversary");
+    auditFallback(appDb, caseId, "adversary", engines);
 
     // 4. verifier gate over the combined tagged sentences (async — does not block loop)
     // §5.3 gate coverage (2026-09-20 audit): the analyst's IRAC fields and
@@ -216,7 +228,18 @@ export async function runCase(
     }, caseId);
 
     // 5. drafter template (pure, no LLM) — banner applied in code per §11
-    const drafted = draftDocument(draft, intake, research, analyst, adversary);
+    let drafted = draftDocument(draft, intake, research, analyst, adversary);
+    // Rehydrate redacted party names in the USER-FACING document only: the
+    // cloud payloads left the machine with placeholders, the draft comes
+    // home to the person who owns the names.
+    if (opts.redactParties && opts.redactParties.length > 0) {
+      drafted = rehydrateParties(drafted, guard.namesInAssignmentOrder());
+    }
+    // Disclose payload caps + redaction (counts only, never names).
+    const disclosures = guard.disclosures();
+    if (disclosures.cappedStages.length > 0 || disclosures.redactedPartyCount > 0) {
+      audit(appDb, "cloud.payload_guard", { caseId, ...disclosures }, caseId);
+    }
     // keep the JSON for audit; the UI renders `draft` + `drafted` together
     appDb
       .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
@@ -286,11 +309,12 @@ export async function runCase(
     try {
       corpus?.close();
     } finally {
-      // Engine state is per-run: clear the mode override and drop any
-      // cloud pin so a server process never leaks one run's routing into
-      // the next (the next runCase pins its own stages from scratch).
+      // Engine state is per-run: clear the mode override, drop any cloud
+      // pin, and unregister the payload transform so a server process
+      // never leaks one run's routing or redaction map into the next.
       setRunMode(null);
       resetEngineToLocal();
+      setCloudPayloadTransform(null);
       release();
     }
   }
@@ -299,11 +323,69 @@ export async function runCase(
 
 /** Disclose a cloud→local fallback for a stage (fail-loud, §5: never a
  *  silent degradation). A no-op when no fallback happened this stage. */
-function auditFallback(appDb: Database.Database, caseId: number, stage: string): void {
+function auditFallback(
+  appDb: Database.Database,
+  caseId: number,
+  stage: string,
+  engines: Array<{ stage: string; engine: EngineId; model: string }>
+): void {
   const fb = consumeFallbackEvent();
   if (fb) {
     audit(appDb, "engine.fallback", { caseId, ...fb, disclosed: true }, caseId);
+    // Provenance honesty: the engines list records what ACTUALLY produced
+    // the stage. A pinned cloud stage that fell back to local is a local
+    // stage in the UI badge — silently local would be a lie.
+    const last = engines.at(-1);
+    if (last && last.stage === stage && last.engine === "cloud") {
+      last.engine = "local";
+      last.model = `local (cloud fallback: ${fb.error.slice(0, 60)})`;
+    }
   }
+}
+
+/**
+ * Rehydrate redacted party placeholders in the draft document: cloud saw
+ * [PARTY n], the user gets their names back. The name→placeholder mapping
+ * is the guard's own assignment order (occurrence order in the payloads),
+ * so [PARTY n] always resolves to the exact party it replaced. Applied to
+ * the user-facing doc AFTER verification: the verifier judged exactly what
+ * the model wrote (placeholders), and the digest covers the REHYDRATED
+ * document — the honest chain from what was checked to what the user holds.
+ */
+function rehydrateParties(
+  drafted: ReturnType<typeof draftDocument>,
+  namesInAssignmentOrder: string[]
+): ReturnType<typeof draftDocument> {
+  const byIndex = new Map<number, string>();
+  namesInAssignmentOrder.forEach((n, i) => byIndex.set(i + 1, n));
+  const phRe = /\[PARTY (\d+)\]/g;
+  const swap = (s: string): string =>
+    s.replace(phRe, (_m, d: string) => byIndex.get(Number(d)) ?? `[PARTY ${d}]`);
+  return {
+    ...drafted,
+    title: swap(drafted.title),
+    caption: swap(drafted.caption),
+    irac_verified: Object.fromEntries(
+      Object.entries(drafted.irac_verified ?? {}).map(([k, v]) => [
+        k,
+        v ? { ...v, text: swap(v.text) } : v,
+      ])
+    ) as typeof drafted.irac_verified,
+    irac: Object.fromEntries(
+      Object.entries(drafted.irac).map(([k, v]) => [k, swap(v)])
+    ) as typeof drafted.irac,
+    element_checklist: drafted.element_checklist.map((e) =>
+      typeof e === "string" ? swap(e) : e
+    ) as typeof drafted.element_checklist,
+    sentences: drafted.sentences.map((s) => ({ ...s, text: swap(s.text) })),
+    adversary: {
+      ...drafted.adversary,
+      counter_argument_verified: drafted.adversary.counter_argument_verified
+        ? { ...drafted.adversary.counter_argument_verified, text: swap(drafted.adversary.counter_argument_verified.text) }
+        : undefined,
+      counter_argument: swap(drafted.adversary.counter_argument),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------

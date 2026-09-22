@@ -80,7 +80,21 @@ export interface RunResponse {
     title: string;
     caption: string;
     authority_appendix: Array<{ citation: string; case_name: string | null; verified: boolean; inferred_treatment: string[]; ambiguous?: boolean }>;
-    verification: { overall: string; summary: Record<string, number> };
+    verification: {
+      overall: string;
+      summary: Record<string, number>;
+      verdict?: {
+        overall: "pass" | "fail";
+        sentences_total: number;
+        sentences_verified: number;
+        sentences_struck: number;
+        citations_extracted: number;
+        citations_verified: number;
+        quotes_checked: number;
+        quotes_verified: number;
+        failures: Array<{ index: number; tag: string; reason: string }>;
+      };
+    };
     certificate?: VerificationCertificateClient;
     generated_at: string;
   };
@@ -151,7 +165,20 @@ export function draftToText(out: RunResponse): string {
   }
   lines.push("");
   lines.push(
-    `verification: ${out.draft.overall} · ${JSON.stringify(out.drafted.verification.summary)}`
+    verificationLine(out)
   );
   return lines.join("\n");
+}
+
+/** The human-readable verdict line, shared by the UI status chip and the
+ *  copy-as-text export. Reads the structured verdict when present. */
+export function verificationLine(out: RunResponse): string {
+  const v = out.drafted.verification.verdict;
+  if (!v) return `verification: ${out.draft.overall}`;
+  return (
+    `verification: ${v.overall.toUpperCase()} — ` +
+    `sentences ${v.sentences_verified}/${v.sentences_total} verified, ` +
+    `citations ${v.citations_verified}/${v.citations_extracted} resolved, ` +
+    `quotes ${v.quotes_verified}/${v.quotes_checked} matched`
+  );
 }

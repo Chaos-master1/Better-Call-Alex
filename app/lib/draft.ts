@@ -54,6 +54,7 @@ export interface DraftDoc {
   verification: {
     overall: RenderedDraft["overall"];
     summary: RenderedDraft["report"]["summary"];
+    verdict: RenderedDraft["verdict"];
   };
   /** Machine-checkable proof artifact (Phase A): digest of THIS document,
    *  per-citation verdicts, engine provenance, and the append-only audit
@@ -149,11 +150,17 @@ export function draftDocument(
       // only problem is a struck sentence (or with none of either) would
       // serialize an unhelpful {}. Sentence verdicts are draft-layer facts,
       // so they are folded in here — summary is never empty.
-      const summary = { ...rendered.report.summary };
-      const struck = cleanSentences.filter((s) => !s.verified).length;
-      if (struck > 0) summary["sentence:struck"] = struck;
-      summary["sentence:verified"] = cleanSentences.length - struck;
-      return { overall: rendered.overall, summary };
+      return {
+        overall: rendered.overall,
+        summary: rendered.verdict
+          ? {
+              ...rendered.report.summary,
+              "sentence:struck": rendered.verdict.sentences_struck,
+              "sentence:verified": rendered.verdict.sentences_verified,
+            }
+          : rendered.report.summary,
+        verdict: rendered.verdict,
+      };
     })(),
     generated_at: new Date().toISOString(),
   };

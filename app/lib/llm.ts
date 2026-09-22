@@ -523,8 +523,9 @@ export async function generate(
       fail("cloud engine selected but no ALEX_CLOUD_API_KEY is configured (check .env)");
     }
     await verifyCloud(c.cloud);
+    const wirePrompt = cloudTransform ? cloudTransform(stage, prompt) : prompt;
     try {
-      return await cloudChat(c.cloud, prompt, opts, !!opts.jsonMode);
+      return await cloudChat(c.cloud, wirePrompt, opts, !!opts.jsonMode);
     } catch (e: any) {
       const msg = scrubSecrets(String(e?.message ?? e), [c.cloud.apiKey]).slice(0, 300);
       if (fallbackPolicy(opts.fallback) === "local") {
@@ -612,6 +613,29 @@ export function consumeFallbackEvent(): { stage: string; error: string } | null 
   return e;
 }
 
+// ---- stage payload transforms (ADR-004 §2.4) ----------------------------
+// Cloud payloads carry client facts. Two protections are registered per
+// run and applied INSIDE the llm seam — exactly where the routed engine is
+// known — so an agent cannot forget them and local mode is untouched by
+// construction.
+
+let cloudTransform: ((stage: string, prompt: string) => string) | null = null;
+
+/** Register the cloud-payload transform for this run (redaction, caps).
+ *  Registered by runCase before stage 1; cleared in its finally. */
+export function setCloudPayloadTransform(
+  fn: ((stage: string, prompt: string) => string) | null
+): void {
+  cloudTransform = fn;
+}
+
+/** Fallback-visibility hook: agents render prompts uniformly (no engine
+ *  awareness), but the UI must disclose which engine produced each stage.
+ *  The run orchestrator consumes this per stage and records it. */
+export function stageRoutedEngine(stage: string): EngineId {
+  return engineForStage(stage);
+}
+
 /** @internal test hook — resets cached config/verification/engine state. */
 export function __resetEngineStateForTests(): void {
   resolvedConfig = null;
@@ -621,6 +645,7 @@ export function __resetEngineStateForTests(): void {
   activeStage = null;
   runModeOverride = null;
   lastFallbackEvent = null;
+  cloudTransform = null;
 }
 
 /** True when a cloud key is configured (UI can offer the toggle). */

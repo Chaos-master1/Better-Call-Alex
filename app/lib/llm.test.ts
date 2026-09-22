@@ -12,11 +12,14 @@
  *   - no key + cloud requested = fail-loud (the fail-open trap, closed).
  */
 import { test, beforeEach } from "node:test";
+// (seam tests for setCloudPayloadTransform live at the bottom of this file)
 import assert from "node:assert/strict";
 import {
   __resetEngineStateForTests,
   engineForStage,
   generate,
+  resetEngineToLocal,
+  setCloudPayloadTransform,
   setRunMode,
   useEngine,
 } from "./llm.js";
@@ -241,4 +244,36 @@ test("cloud error messages are scrubbed of the key", async () => {
     generate("hello", { stage: "analyst" }),
     (e: Error) => !e.message.includes("sk-test-key-000000")
   );
+});
+
+// ---- cloud payload transform seam (ADR-004 §2.4) -----------------------
+
+test("payload transform applies to cloud-bound prompts only", async () => {
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    return chatResponse('{"ok":true}');
+  };
+  setCloudPayloadTransform((_stage, p) => p.replaceAll("SECRET", "[REDACTED]"));
+  try {
+    // Cloud stage: the wire body carries the transform.
+    await generate("facts with SECRET inside", { stage: "analyst" });
+    const chatCall = calls.find((c) => c.url.endsWith("/chat/completions"))!;
+    const body = JSON.parse(String(chatCall.init.body));
+    assert.ok(!String(body.messages[0].content).includes("SECRET"));
+    assert.ok(String(body.messages[0].content).includes("[REDACTED]"));
+  } finally {
+    setCloudPayloadTransform(null);
+    __resetEngineStateForTests();
+  }
+});
+
+test("with no transform registered, cloud prompts ride through untouched", async () => {
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    return chatResponse('{"ok":true}');
+  };
+  await generate("facts with SECRET inside", { stage: "analyst" });
+  const chatCall = calls.find((c) => c.url.endsWith("/chat/completions"))!;
+  const body = JSON.parse(String(chatCall.init.body));
+  assert.ok(String(body.messages[0].content).includes("SECRET"));
 });

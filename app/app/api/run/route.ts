@@ -13,7 +13,12 @@ export const maxDuration = 600; // 10 min — the pipeline is model-bound
 const MAX_FACTS_CHARS = 16_000;
 
 export async function POST(req: Request) {
-  let body: { facts?: unknown; engineMode?: unknown; cloudFallback?: unknown };
+  let body: {
+    facts?: unknown;
+    engineMode?: unknown;
+    cloudFallback?: unknown;
+    redactParties?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -24,6 +29,23 @@ export async function POST(req: Request) {
       "facts is required and must be a non-empty string",
       { status: 400 }
     );
+  }
+  // Optional party redaction (ADR-004 §2.4): names replaced with [PARTY n]
+  // in cloud payloads and rehydrated in the returned draft. Bounded so an
+  // abusive list cannot blow up the transform regex.
+  let redactParties: string[] | undefined;
+  if (body.redactParties !== undefined) {
+    if (
+      !Array.isArray(body.redactParties) ||
+      body.redactParties.some((n) => typeof n !== "string")
+    ) {
+      return new NextResponse("redactParties must be an array of strings", { status: 400 });
+    }
+    redactParties = (body.redactParties as string[])
+      .map((n) => n.trim())
+      .filter((n) => n.length >= 3)
+      .slice(0, 24);
+    if (redactParties.length === 0) redactParties = undefined;
   }
   // ADR-004 per-run engine choice. Invalid values are rejected (never
   // coerced silently — the operator must know which engine they asked for).
@@ -67,6 +89,7 @@ export async function POST(req: Request) {
       signal: req.signal,
       ...(engineMode ? { engineMode: parseEngineMode(engineMode) } : {}),
       ...(cloudFallback ? { cloudFallback: cloudFallback as "abort" | "local" } : {}),
+      ...(redactParties ? { redactParties } : {}),
     });
     const auditRows = app
       .prepare(
