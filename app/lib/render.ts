@@ -173,17 +173,20 @@ function crossReference(
       }
       if (q.status !== "verified") verified = false;
     }
-    // [LAW] without a pin cite cannot be verified. §5.3 + §5.1.
-    if (s.tag === "LAW" && !s.pin_cite) {
-      detail.push("LAW sentence without pin cite → unverified");
-      verified = false;
-    }
-    // [LAW] with a pin cite the extractor saw nothing in: the pin field
-    // claims authority the verifier never checked (e.g. a bare "(26065)"),
-    // which would otherwise pass vacuously. The pin must correspond to an
-    // extracted citation in this sentence's range. §5.1.
-    if (s.tag === "LAW" && s.pin_cite && cits.length === 0) {
-      detail.push(`pin cite '${s.pin_cite}' produced no extractable citation → unverified`);
+    // [LAW] must carry CHECKED authority. §5.3 + §5.1. The pin may arrive
+    // via the dedicated field (local JSON tier) or inline as a parenthetical
+    // the extractor saw (cloud prose tier, e.g. "(392 U.S. 1, 27)"); what
+    // matters is that a citation was extracted from THIS sentence and
+    // resolved. A LAW sentence with none — bare field or bare prose — claims
+    // authority that was never checked. (The earlier "no pin field →
+    // unverified" rule failed real cloud drafts whose inline cites verified
+    // at 100% resolution; struck 2026-09-22 on the live A/B evidence.)
+    if (s.tag === "LAW" && cits.length === 0) {
+      detail.push(
+        s.pin_cite
+          ? `pin cite '${s.pin_cite}' produced no extractable citation → unverified`
+          : "LAW sentence with no extractable citation → unverified"
+      );
       verified = false;
     }
     return {

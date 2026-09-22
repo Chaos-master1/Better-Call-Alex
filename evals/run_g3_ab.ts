@@ -94,7 +94,12 @@ async function runAndMeasure(
   }
   const ms = Math.round(performance.now() - t0);
   const lawSentences = out.draft.sentences.filter((s) => s.tag === "LAW");
-  const lawWithPin = lawSentences.filter((s) => s.pin_cite);
+  // What matters is LAW sentences carrying CHECKED authority — via the pin
+  // field or inline prose (the render gate enforces exactly this). A field
+  // count alone would report 0 for a draft whose inline cites all resolved.
+  const lawWithAuthority = lawSentences.filter(
+    (s) => s.pin_cite || s.verified
+  );
   const cites = out.draft.report.citations;
   const resolved = cites.filter((c) => c.status === "verified").length;
   const appended = out.drafted.sentences.length
@@ -107,7 +112,7 @@ async function runAndMeasure(
     verified: out.draft.sentences.filter((s) => s.verified).length,
     unverified: out.draft.sentences.filter((s) => !s.verified).length,
     law_sentences: lawSentences.length,
-    law_with_resolving_pin: lawWithPin.length,
+    law_with_resolving_pin: lawWithAuthority.length,
     citation_resolution_rate: cites.length ? resolved / cites.length : null,
     element_checklist_size: out.analyst.element_checklist.length,
     adversary_counter_authority: out.adversary.counter_authority.length,
