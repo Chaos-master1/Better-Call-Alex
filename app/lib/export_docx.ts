@@ -24,6 +24,7 @@ import {
   TextRun,
 } from "docx";
 import type { DraftDoc } from "./draft.js";
+import type { VerifiedSentence } from "./render.js";
 
 export type PlannedBlock =
   | { kind: "banner"; text: string }
@@ -33,6 +34,9 @@ export type PlannedBlock =
   | { kind: "heading"; text: string }
   | { kind: "body"; text: string }
   | { kind: "bullet"; text: string }
+  | { kind: "cert_head"; text: string }
+  | { kind: "cert_line"; text: string }
+  | { kind: "cert_hash"; text: string }
   | {
       kind: "sentence";
       tag: string;
@@ -41,6 +45,21 @@ export type PlannedBlock =
       verified: boolean;
       inferred: boolean;
     };
+
+/** Sentence-kind payload shared by the verified-IRAC and counter-argument
+ *  blocks: a failed gate renders struck-through with an UNVERIFIED marker,
+ *  exactly like draft sentences (§3: the user must see what failed). */
+type SentenceInfo = {
+  tag: string;
+  text: string;
+  pin_cite?: string;
+  verified: boolean;
+  inferred: boolean;
+};
+
+function sentenceInfo(s: VerifiedSentence): SentenceInfo {
+  return { tag: s.tag, text: s.text, pin_cite: s.pin_cite, verified: s.verified, inferred: s.inferred };
+}
 
 /** Split free text on newlines into non-empty paragraphs. A "\n" inside one
  *  OOXML run does not reliably survive as a line break in Word — the G5
@@ -70,17 +89,29 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
   });
 
   blocks.push({ kind: "heading", text: "Issues, Rules, Analysis, Conclusion" });
+  // §5.3 gate coverage: IRAC fields are rendered from their VERIFIED
+  // sentences. A gate failure renders struck-through + UNVERIFIED — the
+  // filed document can no longer carry prose the Verifier never checked.
+  // When irac_verified is absent (pre-fix callers / eval fixtures), fall
+  // back to the raw prose WITH an explicit [NOT VERIFIER-GATED] marker so
+  // the fallback is loud, never silent.
   const irac = drafted.irac ?? {};
+  const iracV = drafted.irac_verified ?? {};
   for (const [label, key] of [
     ["ISSUE", "issue"],
     ["RULE", "rule"],
     ["APPLICATION", "application"],
     ["CONCLUSION", "conclusion"],
   ] as const) {
+    const gated = iracV[key];
+    if (gated) {
+      blocks.push({ kind: "sentence", ...sentenceInfo({ ...gated, tag: "INFERRED" }) });
+      continue;
+    }
     const val = (irac as Record<string, unknown>)[key];
     if (typeof val === "string" && val.trim()) {
       for (const line of splitLines(val)) {
-        blocks.push({ kind: "body", text: `${label}: ${line}` });
+        blocks.push({ kind: "body", text: `${label} [NOT VERIFIER-GATED]: ${line}` });
       }
     }
   }
@@ -108,8 +139,15 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
   }
 
   blocks.push({ kind: "heading", text: "Counter-argument" });
-  for (const line of splitLines(drafted.adversary?.counter_argument ?? "")) {
-    blocks.push({ kind: "body", text: line });
+  // Same §5.3 gate coverage for the adversary prose: prefer the verified
+  // sentence (struck-through on failure); raw fallback is loudly marked.
+  const counterV = drafted.adversary?.counter_argument_verified;
+  if (counterV) {
+    blocks.push({ kind: "sentence", ...sentenceInfo({ ...counterV, tag: "INFERRED" }) });
+  } else {
+    for (const line of splitLines(drafted.adversary?.counter_argument ?? "")) {
+      blocks.push({ kind: "body", text: `COUNTER-ARGUMENT [NOT VERIFIER-GATED]: ${line}` });
+    }
   }
   for (const caveat of drafted.adversary?.treatment_caveats ?? []) {
     blocks.push({ kind: "bullet", text: `Treatment caveat (inferred): ${caveat}` });
@@ -120,10 +158,38 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
     const treat = a.inferred_treatment?.length
       ? ` [inferred treatment: ${a.inferred_treatment.join(", ")}]`
       : "";
-    const flag = a.verified ? "" : " — UNVERIFIED";
+    const amb = a.ambiguous ? " [AMBIGUOUS — this citation maps to multiple cases]" : "";
+    const flag = a.verified ? amb : amb + " — UNVERIFIED";
     blocks.push({
       kind: "bullet",
       text: `${a.citation} (${a.case_name ?? "—"})${treat}${flag}`,
+    });
+  }
+
+  blocks.push({ kind: "heading", text: "Verification certificate" });
+  const cert = drafted.certificate;
+  if (cert) {
+    blocks.push({ kind: "cert_head", text: `${cert.schema} · overall ${cert.overall.toUpperCase()}` });
+    blocks.push({ kind: "cert_hash", text: `SHA-256 (canonical draft JSON): ${cert.draft_sha256}` });
+    blocks.push({
+      kind: "cert_line",
+      text: `Audit anchor: audit_log row ${cert.audit_row_id ?? "(none)"} (append-only, trigger-enforced) · run ${cert.run_id ?? "—"} · issued ${cert.issued_at}`,
+    });
+    if (cert.engines.length) {
+      blocks.push({
+        kind: "cert_line",
+        text: `Engines: ${cert.engines.map((e) => `${e.stage}=${e.engine}:${e.model}`).join(" · ")}`,
+      });
+    }
+    blocks.push({ kind: "cert_line", text: cert.statement });
+    blocks.push({
+      kind: "cert_line",
+      text: `Treatment signals are INFERRED from citing language, never asserted (§5.5). Pin pages are not verified against star pagination (corpus limitation, docs/verifier.md).`,
+    });
+  } else {
+    blocks.push({
+      kind: "cert_line",
+      text: "No verification certificate attached to this draft (pre-certificate run). Verification summary only.",
     });
   }
   return blocks;
@@ -153,6 +219,18 @@ function blockToParagraph(b: PlannedBlock): Paragraph {
       return new Paragraph({ text: b.text });
     case "bullet":
       return new Paragraph({ bullet: { level: 0 }, text: b.text });
+    case "cert_head":
+      return new Paragraph({
+        children: [new TextRun({ text: b.text, bold: true })],
+      });
+    case "cert_hash":
+      return new Paragraph({
+        children: [new TextRun({ text: b.text, font: "Courier New", size: 18 })],
+      });
+    case "cert_line":
+      return new Paragraph({
+        children: [new TextRun({ text: b.text, size: 18, color: "595959" })],
+      });
     case "sentence": {
       const children = [
         new TextRun({ text: `[${b.tag}] `, bold: true }),

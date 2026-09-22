@@ -13,6 +13,18 @@
  *      bounded window (agents legitimately elide)
  *
  * No edit-distance fuzzing exists at any rung, by construction.
+ *
+ * Rung 5 (veto, independent audit 2026-09-20 probe02): a match that begins
+ * IMMEDIATELY AFTER a negator word in the source ("no|not|never|none|
+ * neither|nor|cannot " + space) is rejected when the quote itself does not
+ * open with that negator. This is the dropped-negator signature: the two
+ * mutations that escaped every exact-matching rung ("No person shall be
+ * deprived…" quoted as "person shall be deprived…") are verbatim substrings
+ * of the source, so no textual ladder can catch them — but a legitimate
+ * quote of a negated span virtually always includes the negator, while a
+ * quote that silently sheds one flips the meaning. If the same span also
+ * occurs somewhere WITHOUT a preceding negator, that occurrence matches
+ * and the veto never fires. Conservative toward failing by design.
  */
 
 export interface QuoteMatch {
@@ -88,12 +100,42 @@ function locate(
 // can never delimit — G2 fixture invented_quote_single-15.
 const ELLIPSIS_SPLIT = /(?:\u2026|\.\.\.|\[\u2026\]|\(\u2026\)|\[\.\.\.\]|\(\.\.\.\))/;
 
+/** Negator set for the dropped-negator veto (rung 5). Whole words only —
+ *  "noted"/"known"/"number" must never trigger it. */
+function matchIsNegatorShed(text: string, start: number, quote: string): boolean {
+  // The quote opening with the negator itself is the honest form.
+  if (/^(?:no|not|never|none|neither|nor|cannot)\s/i.test(quote.trimStart())) return false;
+  // Canonicalized window before the match: whitespace-collapsed and
+  // curly-quote-mapped, so `‘no person…`, `"no person…`, and `(no person…`
+  // all expose the negator as its own token. normalizeWithMap SWALLOWS
+  // trailing whitespace (it flushes only when a following char arrives),
+  // so the window ends directly at the negator token; the pattern matches
+  // "start-or-space, negator, optional punctuation, end". A 48-char window
+  // keeps ^ from landing mid-word.
+  const before = normalizeWithMap(text.slice(Math.max(0, start - 48), start)).norm;
+  // Boundary before the negator: start-of-window, whitespace, or an opening
+  // quote/bracket (curly forms are mapped to straight ones above) — a
+  // negator that opens a quoted segment (`‘no person…`) is precisely the
+  // shed-negator signature. A letter boundary ("known", "casino") never
+  // matches.
+  return /(?:^| |['"(\[])(?:no|not|never|none|neither|nor|cannot)[.,;:]?$/i.test(before);
+}
+
 export function findQuote(text: string, quote: string): QuoteResult {
   if (!quote.trim()) return { found: false };
 
-  // Rung 1: exact.
-  const raw = text.indexOf(quote);
-  if (raw !== -1) return { found: true, start: raw, end: raw + quote.length };
+  // Rung 1: exact — scan occurrences; the first non-vetoed one wins. If a
+  // source repeats a span both after a negator and clean, the clean
+  // occurrence still verifies (the veto is per-occurrence, not per-quote).
+  let cursor = 0;
+  for (;;) {
+    const raw = text.indexOf(quote, cursor);
+    if (raw === -1) break;
+    if (!matchIsNegatorShed(text, raw, quote)) {
+      return { found: true, start: raw, end: raw + quote.length };
+    }
+    cursor = raw + 1;
+  }
 
   // Rungs 2-4 share the canonicalized haystack.
   const hay = normalizeWithMap(text);
@@ -101,13 +143,17 @@ export function findQuote(text: string, quote: string): QuoteResult {
 
   // Rung 2: canonicalized.
   const hit2 = locate(hay, q.norm);
-  if (hit2) return { found: true, ...hit2 };
+  if (hit2 && !matchIsNegatorShed(text, hit2.start, quote)) {
+    return { found: true, ...hit2 };
+  }
 
   // Rung 3: bracket alterations expanded.
   const qExpanded = expandBrackets(q.norm);
   if (qExpanded !== q.norm) {
     const hit3 = locate(hay, qExpanded);
-    if (hit3) return { found: true, ...hit3 };
+    if (hit3 && !matchIsNegatorShed(text, hit3.start, quote)) {
+      return { found: true, ...hit3 };
+    }
   }
 
   // Rung 4: ellipsis elision — ordered fragments within a bounded window.
@@ -129,7 +175,7 @@ export function findQuote(text: string, quote: string): QuoteResult {
       if (spanStart === -1) spanStart = hay.map[at];
       cursor = at + f.length;
     }
-    if (ok) {
+    if (ok && !matchIsNegatorShed(text, spanStart, quote)) {
       return { found: true, start: spanStart, end: hay.map[cursor - 1] + 1 };
     }
   }

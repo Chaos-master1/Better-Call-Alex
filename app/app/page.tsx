@@ -6,14 +6,35 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { Brand, Composer, HistoryRail } from "../components/chrome";
 import { Inspector } from "../components/inspector";
 import { ResultDashboard } from "../components/result";
 import { SAMPLE, type CaseSummary, type RunResponse } from "../components/types";
 
+/** The server's message, not its envelope: parse JSON error bodies
+ *  ({error: string}), fall back to `status: raw` for non-JSON. */
+function serverMsg(status: number, raw: string): string {
+  try {
+    const j = JSON.parse(raw) as { error?: string };
+    if (j.error) return j.error;
+  } catch { /* non-JSON — keep raw */ }
+  return `${status}: ${raw.slice(0, 300)}`;
+}
+
 export default function Home() {
   const [facts, setFacts] = useState(SAMPLE);
   const [forum, setForum] = useState("");
+  // ADR-004 per-run engine choice. The default follows the server's env
+  // mode once /api/engine answers (the toggle only widens choice when a
+  // key is configured).
+  const [engineMode, setEngineMode] = useState("local");
+  const [engineInfo, setEngineInfo] = useState<{
+    env_mode: string;
+    cloud_available: boolean;
+    cloud_model: string | null;
+    auto_route: Record<string, string>;
+  } | null>(null);
   const [out, setOut] = useState<RunResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -39,6 +60,18 @@ export default function Home() {
 
   useEffect(() => {
     loadCases();
+    fetch("/api/engine")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j) return;
+        setEngineInfo(j);
+        // Default the toggle to the server's env mode; a cloud-only env
+        // with no key falls back to local in the option list.
+        setEngineMode(j.env_mode ?? "local");
+      })
+      .catch(() => {
+        /* engine status is advisory; local remains the default */
+      });
   }, [loadCases]);
 
   const run = () => {
@@ -61,13 +94,13 @@ export default function Home() {
         const r = await fetch("/api/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ facts: payload }),
+          body: JSON.stringify({ facts: payload, engineMode }),
           signal: ac.signal,
         });
         if (gen !== genRef.current) return; // superseded — drop stale result
         if (!r.ok) {
           const t = await r.text();
-          setErr(`${r.status} ${r.statusText}: ${t.slice(0, 600)}`);
+          setErr(serverMsg(r.status, t));
           return;
         }
         const j = (await r.json()) as RunResponse;
@@ -97,7 +130,7 @@ export default function Home() {
         if (gen !== genRef.current) return;
         if (!r.ok) {
           const t = await r.text();
-          setErr(`${r.status}: ${t.slice(0, 300)}`);
+          setErr(serverMsg(r.status, t));
           return;
         }
         setOut((await r.json()) as RunResponse);
@@ -125,6 +158,9 @@ export default function Home() {
           setFacts={setFacts}
           forum={forum}
           setForum={setForum}
+          engineMode={engineMode}
+          setEngineMode={setEngineMode}
+          engineInfo={engineInfo}
           pending={pending}
           err={err}
           onRun={run}
@@ -141,6 +177,11 @@ export default function Home() {
       <div className="ax-inspector">
         <Inspector out={out} />
       </div>
+      <nav className="ax-citeguard-nav" aria-label="Tools">
+        <Link href="/citeguard" className="ax-btn ax-btn-ghost ax-btn-sm">
+          CiteGuard — verify any AI draft →
+        </Link>
+      </nav>
     </div>
   );
 }

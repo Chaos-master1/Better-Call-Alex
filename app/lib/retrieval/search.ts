@@ -17,6 +17,10 @@ export interface SearchHit {
   precedential_status: string | null;
   ocr: boolean;
   via_parenthetical_recall?: boolean;
+  /** surfaced through citation-graph co-citation expansion (opts.prf) */
+  via_prf?: boolean;
+  /** re-ranked by query-term passage density (opts.densityRerank) */
+  density?: number;
   scores: {
     bm25: number;
     authority_multiplier: number;
@@ -35,6 +39,50 @@ export interface SearchOptions {
   jurisdictionIds?: Set<string>;
   /** results to return (default 10) */
   limit?: number;
+  /**
+   * Citation-graph pseudo-relevance feedback (audit Phase B): opinions that
+   * co-cite ≥2 of the top organic hits join the doctrine family even when
+   * their phrasing buries them at bm25 rank #200–#5,000. Eval-arbitrated —
+   * kept only if the mechanical p@10 rewards it. Fills leftover slots only,
+   * after parenthetical-recall seeds.
+   */
+  prf?: boolean;
+  /**
+   * Passage-density re-rank (audit Phase B): among the top organic
+   * candidates, opinions whose query terms cluster densely in one passage
+   * outrank those with scattered single mentions. Whole-opinion bm25 cannot
+   * see this — a 300k-char opinion dilutes its one dense section. Multiply
+   * the final score by (1 + w·log1p(densest-window term count)).
+   * Eval-arbitrated like prf.
+   */
+  densityRerank?: boolean;
+  /**
+   * When provided, per-phase timings are filled in (milliseconds). Zero
+   * cost when absent — the common path never allocates or clocks.
+   */
+  timings?: SearchTimings;
+}
+
+/** Per-phase latency breakdown (audit 2026-09-20: the 4.1 s warm tail was
+ *  attributed by eye, not by measurement — this makes the gate diagnosable). */
+export interface SearchTimings {
+  tokenize_ms: number;
+  courts_ms: number;
+  fts_pool_ms: number;
+  fetch_meta_ms: number;
+  paren_ms: number;
+  score_ms: number;
+  seeds_ms: number;
+  prf_ms: number;
+  text_ms: number;
+  total_ms: number;
+}
+
+export function newTimings(): SearchTimings {
+  return {
+    tokenize_ms: 0, courts_ms: 0, fts_pool_ms: 0, fetch_meta_ms: 0,
+    paren_ms: 0, score_ms: 0, seeds_ms: 0, prf_ms: 0, text_ms: 0, total_ms: 0,
+  };
 }
 
 /** §9.7: honor de-indexing requests. */
@@ -63,6 +111,20 @@ const PAREN_POOL = 500;
  */
 const PAREN_SEED_SLOTS = 2;
 const PAREN_SEED_SCAN = 100;
+/** PRF (opts.prf): top organic opinions whose citers are mined. */
+const PRF_TOP = 5;
+/** PRF: a citer must cite at least this many of the top hits (co-citation). */
+const PRF_MIN_COCITES = 2;
+/** PRF: citer pool scanned by bm25 before filtering. */
+const PRF_CITER_POOL = 60;
+/** PRF: max slots fillable (never displaces organic or parenthetical hits). */
+const PRF_SLOTS = 2;
+/** Density re-rank: how many top organic candidates get text-scanned. */
+const DENSITY_TOP = 50;
+/** Density re-rank: multiplier weight per log-doubling of window density. */
+const DENSITY_WEIGHT = 0.5;
+/** Density re-rank: window size in chars (matches PASSAGE_LEN semantics). */
+const DENSITY_WINDOW = 600;
 const PASSAGE_LEN = 600;
 /** §9.6: OCR-extracted text is degraded; down-weight it. */
 const OCR_WEIGHT = 0.7;
@@ -325,6 +387,20 @@ export function extractPassage(
   tokens: string[],
   len: number = PASSAGE_LEN
 ): Passage {
+  const d = densityOf(text, tokens, len);
+  return d.passage;
+}
+
+/**
+ * Densest fixed window of query-term occurrences: returns the term count in
+ * the best window plus the passage extraction. Shared by extractPassage and
+ * the density re-rank so both see identical geometry.
+ */
+function densityOf(
+  text: string,
+  tokens: string[],
+  len: number
+): { passage: Passage; count: number } {
   // Stored text is WS-collapsed to single spaces by the ETL (textclean.WS_RE),
   // but defensively normalise here so phrase tokens like "qualified immunity"
   // (joined by a single space) never miss because hay still contains \n or
@@ -362,7 +438,10 @@ export function extractPassage(
   const sliced = collapsed.slice(start, start + len);
   const lead = sliced.length - sliced.trimStart().length;
   const body = sliced.trim();
-  return { text: body, start: start + lead, end: start + lead + body.length };
+  return {
+    passage: { text: body, start: start + lead, end: start + lead + body.length },
+    count: Math.max(0, bestCount),
+  };
 }
 
 export function search(
@@ -370,12 +449,19 @@ export function search(
   query: string,
   opts: SearchOptions = {}
 ): SearchHit[] {
+  const T = opts.timings;
+  const t0 = T ? performance.now() : 0;
+  const mark = (k: keyof SearchTimings, from: number) => {
+    if (T) T[k] += performance.now() - from;
+  };
   // Clamp: a NaN/negative/zero limit would disable every early-exit below
   // (comparisons against NaN are always false), scan the full 20k ladder,
   // and then slice to nothing.
   const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 10) || 10), 100);
+  let phase = t0;
   const tokens = tokenize(query);
   const expr = matchExpression(tokens);
+  if (T) { mark("tokenize_ms", phase); phase = performance.now(); }
   if (!expr) return [];
 
   const courts =
@@ -386,6 +472,7 @@ export function search(
   if (courts && courts.size === 0) return [];
 
   const statusMarks = SEARCHABLE_STATUS.map(() => "?").join(",");
+  if (T) { mark("courts_ms", phase); phase = performance.now(); }
 
   let candidates: PoolRow[] = [];
   let usedPool = 0;
@@ -403,7 +490,10 @@ export function search(
     // same expression — but the parenthetical-recall seeds below may still
     // rescue the query. Fall through; never return empty from here.
     if (ranked.length === 0) break;
+    let m0 = 0;
+    if (T) m0 = performance.now();
     const meta = fetchPool(db, ranked.map((r) => r.id));
+    if (T) T.fetch_meta_ms += performance.now() - m0;
     candidates = [];
     for (const r of ranked) {
       const m = meta.get(r.id);
@@ -420,19 +510,41 @@ export function search(
     ).size;
     if (distinctClusters >= limit) break;
   }
+  if (T) { mark("fts_pool_ms", phase); phase = performance.now(); }
 
   const boosts = parenBoosts(db, expr);
+  if (T) { mark("paren_ms", phase); phase = performance.now(); }
 
-  const scored = candidates.map((row) => {
-    const mult = authorityMultiplier(row);
-    const pb = boosts.get(row.id) ?? 0;
-    const parenMult = 1 + PAREN_BOOST * Math.log1p(pb);
-    const w = (row.ocr ? OCR_WEIGHT : 1) * mult * parenMult;
-    return { row, final: -row.bm25 * w, pb };
-  });
+  const scored: Array<{ row: PoolRow; final: number; pb: number; density?: number }> =
+    candidates.map((row) => {
+      const mult = authorityMultiplier(row);
+      const pb = boosts.get(row.id) ?? 0;
+      const parenMult = 1 + PAREN_BOOST * Math.log1p(pb);
+      const w = (row.ocr ? OCR_WEIGHT : 1) * mult * parenMult;
+      return { row, final: -row.bm25 * w, pb };
+    });
   scored.sort(
     (a, b) => b.final - a.final || a.row.id - b.row.id
   );
+
+  // Passage-density re-rank (opts.densityRerank): rescan the top organic
+  // candidates' text and boost the densest discussion. bm25 sees the whole
+  // opinion; this sees where the doctrine actually lives.
+  const densityStmt = opts.densityRerank
+    ? db.prepare("SELECT text FROM opinions WHERE id = ?")
+    : null;
+  if (densityStmt && scored.length > 1) {
+    const head = scored.slice(0, Math.min(DENSITY_TOP, scored.length));
+    for (const s of head) {
+      const r = densityStmt.get(s.row.id) as { text: string } | undefined;
+      if (!r?.text) continue;
+      const { count } = densityOf(r.text, tokens, DENSITY_WINDOW);
+      s.density = count;
+      s.final = s.final * (1 + DENSITY_WEIGHT * Math.log1p(count));
+    }
+    scored.sort((a, b) => b.final - a.final || a.row.id - b.row.id);
+  }
+  if (T) { mark("score_ms", phase); phase = performance.now(); }
   // A case is a cluster: its lead/dissent/concurrence opinions must not
   // crowd out other authority. Keep the best-scoring opinion per cluster.
   const seenClusters = new Set<number>();
@@ -472,15 +584,67 @@ export function search(
       seeds.push({ row: { ...m, bm25: 0 }, pb: boosts.get(id)!, final: 0 });
     }
   }
+  if (T) { mark("seeds_ms", phase); phase = performance.now(); }
+
+  // Citation-graph PRF (opts.prf): direct citers of the top organic hits that
+  // co-cite >=PRF_MIN_COCITES of them are pulled in as doctrine-family
+  // reinforcements. Fills leftover slots only — organic and parenthetical
+  // hits are never displaced.
+  const prfSeeds: Array<{ row: PoolRow; pb: number; final: number }> = [];
+  if (opts.prf && top.length > 0 && top.length < limit) {
+    const claimed = new Set(top.map((s) => s.row.cluster_id ?? s.row.id));
+    for (const s of seeds) claimed.add(s.row.cluster_id ?? s.row.id);
+    const topIds = top.slice(0, Math.min(PRF_TOP, top.length)).map((s) => s.row.id);
+    const marks = topIds.map(() => "?").join(",");
+    const citers = db
+      .prepare(
+        `SELECT ci.citing_id AS citing_id, count(DISTINCT ci.cited_id) AS n
+           FROM cites ci
+          WHERE ci.cited_id IN (${marks}) AND ci.depth = 1
+          GROUP BY ci.citing_id
+          HAVING n >= ?
+          ORDER BY n DESC
+          LIMIT ?`
+      )
+      .all(...topIds, PRF_MIN_COCITES, PRF_CITER_POOL) as Array<{
+      citing_id: number;
+      n: number;
+    }>;
+    if (citers.length > 0) {
+      const meta = fetchPool(db, citers.map((c) => c.citing_id));
+      const budget = Math.min(PRF_SLOTS, limit - top.length - seeds.length);
+      for (const c of citers) {
+        if (prfSeeds.length >= Math.max(0, budget)) break;
+        const m = meta.get(c.citing_id);
+        if (!m) continue;
+        if (m.precedential_status == null ||
+            !SEARCHABLE_STATUS.includes(m.precedential_status)) continue;
+        if (EXCLUDE_BLOCKED && m.blocked) continue;
+        if (courts && (m.court_id == null || !courts.has(m.court_id))) continue;
+        const key = m.cluster_id ?? m.id;
+        if (claimed.has(key)) continue;
+        claimed.add(key);
+        // pb stays 0: co-citation counts must not masquerade as
+        // parenthetical_hits (scores.parenthetical_hits is that field alone).
+        prfSeeds.push({ row: { ...m, bm25: 0 }, pb: 0, final: 0 });
+      }
+    }
+  }
+  if (T) { mark("prf_ms", phase); phase = performance.now(); }
 
   const merged = [
-    ...top.slice(0, Math.max(0, limit - seeds.length)),
+    ...top.slice(0, Math.max(0, limit - seeds.length - prfSeeds.length)),
     ...seeds,
+    ...prfSeeds,
   ];
-  const seedIds = new Set(seeds.map((s) => s.row.id));
+  const parenIds = new Set(seeds.map((s) => s.row.id));
+  const prfIds = new Set(prfSeeds.map((s) => s.row.id));
+  const densityById = new Map(
+    merged.map((s) => [s.row.id, (s as { density?: number }).density])
+  );
 
   const textStmt = db.prepare("SELECT text FROM opinions WHERE id = ?");
-  return merged.map(({ row, final, pb }) => {
+  const out = merged.map(({ row, final, pb }) => {
     const text = (textStmt.get(row.id) as { text: string } | undefined)?.text ?? "";
     return {
       opinion_id: row.id,
@@ -491,7 +655,11 @@ export function search(
       court_id: row.court_id,
       precedential_status: row.precedential_status,
       ocr: !!row.ocr,
-      ...(seedIds.has(row.id) ? { via_parenthetical_recall: true as const } : {}),
+      ...(parenIds.has(row.id) ? { via_parenthetical_recall: true as const } : {}),
+      ...(prfIds.has(row.id) ? { via_prf: true as const } : {}),
+      ...(densityById.get(row.id) != null
+        ? { density: densityById.get(row.id) as number }
+        : {}),
       scores: {
         bm25: row.bm25,
         authority_multiplier: authorityMultiplier(row),
@@ -503,4 +671,9 @@ export function search(
       passages: text ? [extractPassage(text, tokens)] : [],
     };
   });
+  if (T) {
+    mark("text_ms", phase);
+    T.total_ms = performance.now() - t0;
+  }
+  return out;
 }

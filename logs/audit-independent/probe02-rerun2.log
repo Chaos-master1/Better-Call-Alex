@@ -1,0 +1,14 @@
+sampling opinions...
+positive controls (real quotes must verify)...
+adversarial mutations (must be caught)...
+wrong-case attribution (must be caught)...
+
+positive verified: 120/150
+adversarial caught: 170/170
+  altered_name: 35/35
+  transposed_words: 38/38
+  dropped_negation: 34/34
+  altered_number: 13/13
+  wrong_case_attribution: 50/50
+verdict: PARTIAL — fabrication catch perfect but false-strike rate too high
+-> /home/Houssem/Desktop/projects/Better Call Alex/Better Call Alex/logs/audit-independent/probe02-rerun2.json

@@ -20,7 +20,7 @@ that forces the change (see §3).
 | Decision | Why |
 |---|---|
 | **US jurisdictions only** for v1 | The 418 GB CourtListener corpus is the only defensible asset here. It is US-only. Other jurisdictions come after this one works. |
-| **Local inference only** (Ollama) | Privileged client material never leaves the machine. Cloud is a later opt-in behind one seam (`app/lib/llm.ts`), not a rewrite. |
+| **Hybrid inference, user-selectable** (ADR-004, 2026-09-22 — was "local only") | Local (Ollama) remains the default and the privacy tier. The cloud is an opt-in OpenAI-compatible endpoint behind the one seam (`app/lib/llm.ts`), per-run selectable (`local \| cloud \| auto`), routed per stage, and gated by the same verifier — the gate reads citations and quotes, not engines. Fail-loud defaults: no key = local; cloud failure = abort (or disclosed fallback). Evidence: `evals/run_g3_ab.ts`. |
 | **SQLite, one file, no servers** | Benchmarked: FTS5 ingests real opinions at 15.28 MB/s/core, 1.48× text on disk, 3–7 ms queries. Replaces Qdrant + Neo4j + Postgres + Redis + Langfuse + turbovec + the embedding pipeline. |
 | **No embeddings in v1** | BM25 over opinion text plus BM25 over judge-written parentheticals is strong for legal queries, which are terminology-heavy. Costs zero GPU-hours. Upgrade path is pre-computed (§5). |
 | **Four agents** | The 27 "agents" in the old plans are sections of two prompts, not services. Their prompt text is salvaged into `docs/prompts/`. |
@@ -140,19 +140,26 @@ Then the Verifier gates the output, and the Drafter is a template plus one call.
 The Adversary is the feature nobody else ships: "here is the best case against
 you," retrieved rather than invented.
 
-### Model and VRAM rules — 12 GB is the hard constraint
+### Model and VRAM rules — 12 GB is the hard constraint (local tier)
 
 - `qwen3.5:9b` (6.6 GB) is the resident workhorse at 32k context.
 - Swap to `qwen3:14b` (9.3 GB) **once**, for the Analyst + Adversary pass,
-  batched so a run costs at most two swaps.
+  batched so a run costs at most two swaps. (`useModel()` no-ops while the
+  cloud engine is pinned — ADR-004.)
 - Set `OLLAMA_KV_CACHE_TYPE=q8_0`.
 - **Never set `OLLAMA_NUM_CTX=2048`.** The previous Python build shipped that
   against payloads containing full IRAC trees; every downstream agent was reading
   truncated input and nobody noticed. Assert the effective context at startup.
 - Verify a model tag exists with `ollama list` before writing it into config. A
-  previous build lost weeks to `gemma4:12b`, which does not exist.
-- All model selection goes through `app/lib/llm.ts`. Adding a cloud provider is a
-  config change there and nowhere else.
+  previous build lost weeks to `gemma4:12b`, which does not exist. The cloud
+  tier gets the same check (`GET /models`) for `ALEX_CLOUD_MODEL`.
+- All model selection goes through `app/lib/llm.ts` — both tiers. Engine modes
+  `local \| cloud \| auto` (ADR-004): per-run UI toggle, per-stage routing in
+  auto (`ALEX_AUTO_ROUTE`; researcher stays local — it writes for OUR FTS
+  dialect). Cloud output passes `app/lib/normalize.ts` (markdown artifacts
+  break verbatim quote matching) and then the same verifier. Every stage's
+  audit row records `engine:model`; fallbacks are disclosed (`engine.fallback`),
+  never silent.
 
 ---
 

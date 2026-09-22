@@ -79,6 +79,8 @@ const STAGES: Array<[string, string]> = [
   ["Verifier", "gate every cite + quote"],
 ];
 
+export type { StageEngine } from "./types";
+
 function useElapsed(running: boolean): number {
   const [started, setStarted] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -98,6 +100,9 @@ export function Composer({
   setFacts,
   forum,
   setForum,
+  engineMode,
+  setEngineMode,
+  engineInfo,
   pending,
   err,
   onRun,
@@ -107,12 +112,28 @@ export function Composer({
   setFacts: (v: string) => void;
   forum: string;
   setForum: (v: string) => void;
+  /** ADR-004 per-run engine choice. */
+  engineMode: string;
+  setEngineMode: (v: string) => void;
+  /** Non-secret engine status from GET /api/engine. */
+  engineInfo: {
+    env_mode: string;
+    cloud_available: boolean;
+    cloud_model: string | null;
+    auto_route: Record<string, string>;
+  } | null;
   pending: boolean;
   err: string | null;
   onRun: () => void;
   onCancel: () => void;
 }) {
   const elapsed = useElapsed(pending);
+  const stageDesc = (s: string): string => {
+    const stage = engineInfo?.auto_route?.[s] ?? (s === "analyst" || s === "adversary" ? "cloud" : "local");
+    if (engineMode === "local") return "local";
+    if (engineMode === "cloud") return "cloud";
+    return engineInfo?.cloud_available ? stage : "local";
+  };
   return (
     <div className="ax-composer-block">
       <div className="ax-hero">
@@ -162,6 +183,32 @@ export function Composer({
             doesn&apos;t — never silently empties results.
           </p>
         </div>
+        <div className="ax-field">
+          <label htmlFor="ax-engine">Engine (ADR-004)</label>
+          <select
+            id="ax-engine"
+            className="ax-input"
+            value={engineMode}
+            disabled={pending}
+            onChange={(e) => setEngineMode(e.target.value)}
+          >
+            <option value="local">Local — private, on this machine</option>
+            <option value="cloud" disabled={!engineInfo?.cloud_available}>
+              Cloud{engineInfo?.cloud_model ? ` — ${engineInfo.cloud_model}` : ""}
+              {!engineInfo?.cloud_available ? " (no key configured)" : ""}
+            </option>
+            <option value="auto" disabled={!engineInfo?.cloud_available}>
+              Auto — frontier reasons, local researches
+            </option>
+          </select>
+          <p className="ax-hint">
+            {engineMode === "auto"
+              ? `Analyst+adversary ride ${stageDesc("analyst")}; intake+research stay ${stageDesc("intake")}.`
+              : engineMode === "cloud"
+              ? "Every stage on the configured cloud endpoint. The verifier gates cloud output exactly like local."
+              : "Everything on this machine. Privileged material never leaves it."}
+          </p>
+        </div>
       </div>
 
       <div className="ax-actions">
@@ -178,8 +225,7 @@ export function Composer({
           </button>
         )}
         <span className="ax-run-note">
-          qwen3.5:9b → qwen3:14b (batched, ≤2 swaps) → verifier gate ·
-          Ctrl/⌘+Enter to run
+          verifier gate runs on every engine · Ctrl/⌘+Enter to run
         </span>
       </div>
 
@@ -190,12 +236,22 @@ export function Composer({
             <span className="ax-elapsed">{elapsed}s elapsed</span>
           </div>
           <ul className="ax-stage-list">
-            {STAGES.map(([name, desc]) => (
-              <li key={name} className="ax-stage">
-                <b>{name}</b>
-                <span>{desc}</span>
-              </li>
-            ))}
+            {STAGES.map(([name, desc]) => {
+              const stageKey =
+                name === "Intake" ? "intake" : name === "Research" ? "researcher" : name === "Analysis" ? "analyst" : name === "Adversary" ? "adversary" : null;
+              const eng = stageKey ? stageDesc(stageKey) : null;
+              return (
+                <li key={name} className="ax-stage">
+                  <b>{name}</b>
+                  <span>{desc}</span>
+                  {eng && (
+                    <span className="ax-chip info" style={{ marginLeft: 8 }}>
+                      {eng}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
           <p className="ax-stage-note">
             Order of operations, not live progress — local models take

@@ -24,7 +24,23 @@ import {
   type AnalystOutput,
   type AdversaryOutput,
 } from "./index.js";
-import { useModel, RESIDENT_MODEL, ANALYST_MODEL } from "../llm.js";
+import {
+  useModel,
+  useEngine,
+  setRunMode,
+  consumeFallbackEvent,
+  resetEngineToLocal,
+  RESIDENT_MODEL,
+  ANALYST_MODEL,
+  engineQualifiedModel,
+  type EngineId,
+  type EngineMode,
+} from "../llm.js";
+import {
+  IRAC_FIELDS,
+  iracSentence,
+  counterArgumentSentence,
+} from "../markers.js";
 import {
   verifyTaggedSentences,
   verifyTaggedSentencesAsync,
@@ -33,6 +49,7 @@ import {
   type TaggedSentence,
 } from "../render.js";
 import { draftDocument, type DraftDoc } from "../draft.js";
+import { buildVerificationCertificate } from "../certificate.js";
 import { openCorpus } from "../db.js";
 
 export interface RunOutput {
@@ -44,6 +61,8 @@ export interface RunOutput {
   adversary: AdversaryOutput;
   draft: RenderedDraft;
   drafted: DraftDoc;
+  /** Per-stage engine provenance (ADR-004): stage → engine + qualified model. */
+  engines: Array<{ stage: string; engine: EngineId; model: string }>;
   /** Total wall-clock ms. */
   ms: number;
 }
@@ -60,6 +79,14 @@ export interface RunOptions {
    *  holding the single-flight slot. The installed ollama client has no
    *  per-call signal support, so boundary checks are the full mechanism. */
   signal?: AbortSignal;
+  /** Per-run engine mode (ADR-004 UI toggle): "local" | "cloud" | "auto".
+   *  Omitted → the env default (ALEX_ENGINE, local). Auto routes per-stage
+   *  via ALEX_AUTO_ROUTE (analyst/adversary → cloud by default; researcher
+   *  stays local — it writes for OUR FTS dialect). */
+  engineMode?: EngineMode;
+  /** Cloud failure policy for this run: "abort" (default, honest) or
+   *  "local" (disclosed fallback — audit row + UI badge, never silent). */
+  cloudFallback?: "abort" | "local";
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -88,43 +115,86 @@ export async function runCase(
   // must stay inside the try: a throw before the finally would leak the
   // single-flight slot and deadlock every subsequent run.
   let corpus: Database.Database | null = null;
+  // Per-run engine mode (ADR-004): the explicit UI choice wins; otherwise
+  // the env default stands. Restored in finally so a server process never
+  // leaks one run's override into the next.
+  setRunMode(opts.engineMode ?? null);
+  const engines: Array<{ stage: string; engine: EngineId; model: string }> = [];
   try {
     // The running row is created BEFORE any fallible work: a pre-intake
     // throw (openCorpus, model load) must still leave a failed run behind,
     // not an invisible case that 404s in history.
     startRun(appDb, caseId);
+    audit(appDb, "engine.mode", { caseId, mode: opts.engineMode ?? "(env)", fallback: opts.cloudFallback ?? "abort" }, caseId);
     throwIfAborted(opts.signal);
     corpus = openCorpus();
-    // 1. intake (qwen3.5:9b)
+    // 1. intake — engine pinned per stage (auto routes via ALEX_AUTO_ROUTE;
+    //    default route keeps intake local: it is extraction, 9B handles it).
+    const intakeEngine = await useEngine("auto", "intake");
     await useModel(RESIDENT_MODEL);
     throwIfAborted(opts.signal);
     const intake = await intakeAgent(facts);
-    persistIntake(appDb, caseId, intake);
-    audit(appDb, "agent.intake", { caseId }, caseId);
+    const intakeModel = engineQualifiedModel(intakeEngine, RESIDENT_MODEL);
+    persistIntake(appDb, caseId, intake, intakeModel);
+    engines.push({ stage: "intake", engine: intakeEngine, model: intakeModel });
+    audit(appDb, "agent.intake", { caseId, engine: intakeEngine, model: intakeModel }, caseId);
+    auditFallback(appDb, caseId, "intake");
 
-    // 2. researcher (qwen3.5:9b, on resident model)
+    // 2. researcher — stays LOCAL in the default auto route: it writes
+    //    queries for OUR FTS dialect (phrase dictionary, AND semantics);
+    //    a frontier model's natural-language queries can retrieve WORSE.
     throwIfAborted(opts.signal);
+    const researchEngine = await useEngine("auto", "researcher");
     const research = await researcherAgent(intake, corpus);
     persistResearch(appDb, caseId, research);
-    audit(appDb, "agent.researcher", { caseId, hits: research.hits.length }, caseId);
+    const researchModel = engineQualifiedModel(researchEngine, RESIDENT_MODEL);
+    engines.push({ stage: "researcher", engine: researchEngine, model: researchModel });
+    audit(appDb, "agent.researcher", { caseId, hits: research.hits.length, engine: researchEngine, model: researchModel }, caseId);
+    auditFallback(appDb, caseId, "researcher");
 
-    // 3. swap to 14b for the analyst + adversary pass
+    // 3. analyst + adversary pass — the reasoning-heavy stages. Local tier:
+    //    swap to 14b (useModel no-ops under the cloud engine).
     throwIfAborted(opts.signal);
+    const analystEngine = await useEngine("auto", "analyst");
     await useModel(ANALYST_MODEL);
 
     const analyst = await analystAgent(intake, research);
-    persistAnalyst(appDb, caseId, analyst);
-    audit(appDb, "agent.analyst", { caseId }, caseId);
+    const analystModel = engineQualifiedModel(analystEngine, ANALYST_MODEL);
+    persistAnalyst(appDb, caseId, analyst, analystModel);
+    engines.push({ stage: "analyst", engine: analystEngine, model: analystModel });
+    audit(appDb, "agent.analyst", { caseId, engine: analystEngine, model: analystModel }, caseId);
+    auditFallback(appDb, caseId, "analyst");
 
     throwIfAborted(opts.signal);
+    const adversaryEngine = await useEngine("auto", "adversary");
+    await useModel(ANALYST_MODEL);
     const adversary = await adversaryAgent(intake, research, analyst, corpus);
-    persistAdversary(appDb, caseId, adversary);
-    audit(appDb, "agent.adversary", { caseId }, caseId);
+    const adversaryModel = engineQualifiedModel(adversaryEngine, ANALYST_MODEL);
+    persistAdversary(appDb, caseId, adversary, adversaryModel);
+    engines.push({ stage: "adversary", engine: adversaryEngine, model: adversaryModel });
+    audit(appDb, "agent.adversary", { caseId, engine: adversaryEngine, model: adversaryModel }, caseId);
+    auditFallback(appDb, caseId, "adversary");
 
     // 4. verifier gate over the combined tagged sentences (async — does not block loop)
+    // §5.3 gate coverage (2026-09-20 audit): the analyst's IRAC fields and
+    // the adversary's counter-argument are model prose too. They used to be
+    // rendered as ungated body text in the UI and the exported DOCX — the
+    // one artifact a lawyer files was the one place verification was not
+    // stamped. They are split into sentences, tagged [INFERRED] (they are
+    // reasoning, not record), and verified with the same gate: INFERRED
+    // quotes ARE quote-checked, so an invented quote in an IRAC rule now
+    // fails visibly, struck through, everywhere the prose appears.
+    const iracSentences: TaggedSentence[] = IRAC_FIELDS.map((field) =>
+      iracSentence(field, analyst.irac[field])
+    );
+    const adversarySentences: TaggedSentence[] = [
+      counterArgumentSentence(adversary.counter_argument),
+    ];
     const combined: TaggedSentence[] = [
       ...analyst.tagged_sentences,
+      ...iracSentences,
       ...adversary.tagged_sentences,
+      ...adversarySentences,
     ];
     // RECORD confinement runs here for the audit count AND inside the
     // verify fns (idempotent second pass) so the gate holds for all
@@ -151,12 +221,34 @@ export async function runCase(
     appDb
       .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
       .run(JSON.stringify(drafted), caseId);
-    audit(appDb, "drafter.render", { caseId, banner: drafted.banner, overall: drafted.verification.overall }, caseId);
+    const renderAuditRow = audit(appDb, "drafter.render", { caseId, banner: drafted.banner, overall: drafted.verification.overall }, caseId);
+    // Verification certificate (Phase A): digest over the draft, engine
+    // provenance, anchored to the drafter.render audit row (append-only ⇒
+    // tamper-evident). Attached AFTER the audit row exists so the anchor
+    // is real; the certificate rides in the persisted draft_json.
+    drafted.certificate = buildVerificationCertificate(drafted, {
+      caseId,
+      runId: null, // the run row is finalized next; the route backfills run_id
+      auditRowId: renderAuditRow,
+      engines,
+      generatedAt: drafted.generated_at,
+    });
+    appDb
+      .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
+      .run(JSON.stringify(drafted), caseId);
 
     // 6. swap back to 9b so subsequent runs start on the resident model
     await useModel(RESIDENT_MODEL);
 
     const runId = finalizeRun(appDb, caseId, "succeeded", performance.now() - t0);
+    // Backfill the real run id into the certificate (it was built before
+    // finalization) so the persisted artifact is self-describing.
+    if (drafted.certificate) drafted.certificate.run_id = runId;
+    appDb
+      .prepare(
+        `UPDATE runs SET draft_json = ? WHERE id = ? AND status = 'succeeded'`
+      )
+      .run(JSON.stringify(drafted), runId);
     return {
       run_id: runId,
       case_id: caseId,
@@ -166,6 +258,7 @@ export async function runCase(
       adversary,
       draft,
       drafted,
+      engines,
       ms: performance.now() - t0,
     };
   } catch (err) {
@@ -193,8 +286,23 @@ export async function runCase(
     try {
       corpus?.close();
     } finally {
+      // Engine state is per-run: clear the mode override and drop any
+      // cloud pin so a server process never leaks one run's routing into
+      // the next (the next runCase pins its own stages from scratch).
+      setRunMode(null);
+      resetEngineToLocal();
       release();
     }
+  }
+}
+
+
+/** Disclose a cloud→local fallback for a stage (fail-loud, §5: never a
+ *  silent degradation). A no-op when no fallback happened this stage. */
+function auditFallback(appDb: Database.Database, caseId: number, stage: string): void {
+  const fb = consumeFallbackEvent();
+  if (fb) {
+    audit(appDb, "engine.fallback", { caseId, ...fb, disclosed: true }, caseId);
   }
 }
 
@@ -239,15 +347,17 @@ function finalizeRun(
 function persistIntake(
   appDb: Database.Database,
   caseId: number,
-  intake: IntakeOutput
+  intake: IntakeOutput,
+  model: string
 ): void {
   // startRun() already ran before any fallible work (see runCase); this
-  // only persists the intake payload onto the running row.
+  // only persists the intake payload onto the running row. The model
+  // column records the engine-qualified identity (ADR-004 provenance).
   appDb
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(intake), RESIDENT_MODEL);
+    .run(caseId, JSON.stringify(intake), model);
   appDb
     .prepare(
       `UPDATE runs SET intake_json = ? WHERE case_id = ? AND status = 'running'`
@@ -272,13 +382,14 @@ function persistResearch(
 function persistAnalyst(
   appDb: Database.Database,
   caseId: number,
-  analyst: AnalystOutput
+  analyst: AnalystOutput,
+  model: string
 ): void {
   appDb
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(analyst), ANALYST_MODEL);
+    .run(caseId, JSON.stringify(analyst), model);
   appDb
     .prepare(
       `UPDATE runs SET analyst_json = ? WHERE case_id = ? AND status = 'running'`
@@ -289,13 +400,14 @@ function persistAnalyst(
 function persistAdversary(
   appDb: Database.Database,
   caseId: number,
-  adversary: AdversaryOutput
+  adversary: AdversaryOutput,
+  model: string
 ): void {
   appDb
     .prepare(
       `INSERT INTO messages (case_id, role, content, model) VALUES (?, 'assistant', ?, ?)`
     )
-    .run(caseId, JSON.stringify(adversary), ANALYST_MODEL);
+    .run(caseId, JSON.stringify(adversary), model);
   appDb
     .prepare(
       `UPDATE runs SET adversary_json = ? WHERE case_id = ? AND status = 'running'`

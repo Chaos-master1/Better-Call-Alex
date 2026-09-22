@@ -152,9 +152,25 @@ function crossReference(
     for (const c of cits) {
       detail.push(`cite '${c.citation_text}' → ${c.status}`);
       if (c.status !== "verified") verified = false;
+      // probe04 (audit 2026-09-20): 7.2% of (vol, rep, page) groups map to
+      // >1 cluster. The cite still verifies; the AMBIGUITY is surfaced so
+      // the user knows the cite alone does not identify a unique case.
+      if (c.ambiguous_cluster_ids && c.ambiguous_cluster_ids.length > 1) {
+        detail.push(
+          `cite '${c.citation_text}' → AMBIGUOUS (${c.ambiguous_cluster_ids.length} clusters match this citation)`
+        );
+      }
     }
     for (const q of quotes) {
       detail.push(`quote '${q.quote.slice(0, 30)}…' → ${q.status}`);
+      if (q.status === "verified" && q.true_source?.within_cluster) {
+        // Honest provenance: the span lives in a sibling opinion of the
+        // cited case (dissent/concurrence/companion) — verified, but the
+        // user should know it is not the majority text.
+        detail.push(
+          `  ↳ found in a SIBLING opinion of the cited case${q.true_source.case_name ? ` (${q.true_source.case_name})` : ""} — not the majority text`
+        );
+      }
       if (q.status !== "verified") verified = false;
     }
     // [LAW] without a pin cite cannot be verified. §5.3 + §5.1.

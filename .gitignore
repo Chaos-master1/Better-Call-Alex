@@ -17,3 +17,10 @@ app/.next/
 .env
 .env.*
 !.env.example
+
+# Historical plan archive (2.6 GB of superseded planning docs) — deliberately
+# untracked; never commit it (2026-09-20 independent audit).
+better call alex old plan archives/
+
+# Independent audit scratch runs
+corpus-audit-tmp/

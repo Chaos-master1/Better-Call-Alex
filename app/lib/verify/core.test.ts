@@ -76,6 +76,41 @@ test("pin-page range resolves to its base page (456 U.S. 798, 800 pattern)", () 
   }
 });
 
+// ——— citation ambiguity (probe04, independent audit 2026-09-20) ———
+
+test("a cite mapping to multiple clusters stays verified and is annotated AMBIGUOUS", () => {
+  const db = memoryCorpus();
+  try {
+    // A second, unrelated cluster holds the same (vol, rep, page) string —
+    // the 7.2% collision population probe04 measured.
+    db.exec(
+      `INSERT INTO opinions (id, cluster_id, case_name, type, blocked, text)
+       VALUES (2, 200, 'Other Case', 'lead', 0, 'unrelated words entirely')`
+    );
+    db.exec(`INSERT INTO citation_strings VALUES (200, '410', 'U.S.', '113', 'full')`);
+
+    const report = analyzeCitationsAndQuotes(db, [fullCite("113")], "410 U.S. 113");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.overall, "pass");
+    const amb = report.citations[0].ambiguous_cluster_ids;
+    assert.ok(Array.isArray(amb) && amb.length === 2, `expected 2 clusters, got ${JSON.stringify(amb)}`);
+    assert.ok([...amb].sort().join(",") === "100,200");
+  } finally {
+    db.close();
+  }
+});
+
+test("a unique cite carries no ambiguity annotation", () => {
+  const db = memoryCorpus();
+  try {
+    const report = analyzeCitationsAndQuotes(db, [fullCite("113")], "410 U.S. 113");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[0].ambiguous_cluster_ids, undefined);
+  } finally {
+    db.close();
+  }
+});
+
 // ——— RECORD boundary ———
 
 test("quote straddling a RECORD boundary is CHECKED, not skipped", () => {
@@ -133,6 +168,73 @@ test("cited_by excludes transitive and de-indexed citers", () => {
     db.close();
   }
 });
+// ——— dropped-negator veto (audit probe02 2026-09-20) ———
+
+test("a quote that silently sheds its negator fails, everywhere in the ladder", () => {
+  const db = memoryCorpus();
+  try {
+    // Source contains: No person shall be deprived of life liberty
+    db.exec(
+      `INSERT INTO opinions (id, cluster_id, case_name, blocked, text)
+       VALUES (2, 200, 'Negator Source', 0,
+         'The statute reads no person shall be deprived of life liberty without due process')`
+    );
+    db.exec(
+      `INSERT INTO opinions_fts (rowid, text) VALUES (2, 'The statute reads no person shall be deprived of life liberty without due process')`
+    );
+    // Citation row so "410 U.S. 200" resolves to cluster 200 (the source).
+    db.exec(`INSERT INTO citation_strings VALUES (200, '410', 'U.S.', '200', 'full')`);
+    const cite = fullCite("200", 0, 9);
+    const text = `[LAW] The court said "person shall be deprived of life liberty" (410 U.S. 200).`;
+    cite.start = text.indexOf("410 U.S. 200");
+    cite.end = cite.start + 12;
+    const report = analyzeCitationsAndQuotes(db, [cite], text);
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.quotes[0].status, "quote_not_found");
+
+    // Control: quoting the negated form honestly verifies.
+    const good = `[LAW] The court said "no person shall be deprived of life liberty" (410 U.S. 200).`;
+    const cite2 = fullCite("200", 0, 9);
+    cite2.start = good.indexOf("410 U.S. 200");
+    cite2.end = cite2.start + 12;
+    const report2 = analyzeCitationsAndQuotes(db, [cite2], good);
+    assert.equal(report2.quotes[0].status, "verified");
+  } finally {
+    db.close();
+  }
+});
+
+// ——— sibling-opinion attribution (audit probe02 2026-09-20) ———
+
+test("a quote in a SIBLING opinion of the cited cluster VERIFIES with within_cluster provenance", () => {
+  const db = memoryCorpus();
+  try {
+    // Same cluster 100: lead (id 1) holds the quick-fox text; sibling (id 6)
+    // holds a distinctive span the lead does NOT.
+    db.exec(
+      `INSERT INTO opinions (id, cluster_id, case_name, type, blocked, text)
+       VALUES (6, 100, 'Roe v. Wade', 'dissent', 0,
+         'the falcon soars above seven crimson towers at midnight seeking wisdom')`
+    );
+    db.exec(
+      `INSERT INTO opinions_fts (rowid, text) VALUES (6, 'the falcon soars above seven crimson towers at midnight seeking wisdom')`
+    );
+    const text = `[LAW] The court said "falcon soars above seven crimson towers" (410 U.S. 113).`;
+    const citeStart = text.indexOf("410 U.S. 113");
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [{ ...fullCite("113"), start: citeStart, end: citeStart + 12 }],
+      text
+    );
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.quotes[0].status, "verified");
+    assert.equal(report.overall, "pass");
+    assert.equal(report.quotes[0].true_source?.within_cluster, true);
+  } finally {
+    db.close();
+  }
+});
+
 // ——— bridge transport parity: fail the draft, never the pipeline ———
 
 /** Fake "python": ignores argv, runs the given shell body. Restores env. */

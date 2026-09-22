@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { openApp } from "../../../lib/app_db";
+import { parseEngineMode } from "../../../lib/env";
 import { runCase } from "../../../lib/agents/run";
 
 export const runtime = "nodejs";
@@ -12,7 +13,7 @@ export const maxDuration = 600; // 10 min — the pipeline is model-bound
 const MAX_FACTS_CHARS = 16_000;
 
 export async function POST(req: Request) {
-  let body: { facts?: unknown };
+  let body: { facts?: unknown; engineMode?: unknown; cloudFallback?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -23,6 +24,18 @@ export async function POST(req: Request) {
       "facts is required and must be a non-empty string",
       { status: 400 }
     );
+  }
+  // ADR-004 per-run engine choice. Invalid values are rejected (never
+  // coerced silently — the operator must know which engine they asked for).
+  const engineMode =
+    body.engineMode === undefined ? undefined : String(body.engineMode);
+  if (engineMode !== undefined && !["local", "cloud", "auto"].includes(engineMode)) {
+    return new NextResponse("engineMode must be local | cloud | auto", { status: 400 });
+  }
+  const cloudFallback =
+    body.cloudFallback === undefined ? undefined : String(body.cloudFallback);
+  if (cloudFallback !== undefined && !["abort", "local"].includes(cloudFallback)) {
+    return new NextResponse("cloudFallback must be abort | local", { status: 400 });
   }
   const facts = body.facts.trim();
   if (facts.length > MAX_FACTS_CHARS) {
@@ -50,7 +63,11 @@ export async function POST(req: Request) {
         .prepare(`INSERT INTO cases (slug, title, facts) VALUES (?, ?, ?)`)
         .run(`web-${randomUUID()}`, title, facts).lastInsertRowid
     );
-    const out = await runCase(app, caseId, facts, { signal: req.signal });
+    const out = await runCase(app, caseId, facts, {
+      signal: req.signal,
+      ...(engineMode ? { engineMode: parseEngineMode(engineMode) } : {}),
+      ...(cloudFallback ? { cloudFallback: cloudFallback as "abort" | "local" } : {}),
+    });
     const auditRows = app
       .prepare(
         `SELECT ts, kind, payload FROM audit_log WHERE case_id = ? ORDER BY id DESC LIMIT 12`
@@ -88,6 +105,10 @@ export async function POST(req: Request) {
         })),
       },
       irac: out.analyst.irac,
+      // §5.3 gate coverage: verified forms of the IRAC + counter-argument
+      // prose, so the UI can render strike-throughs instead of raw prose.
+      drafted_irac_verified: out.drafted.irac_verified,
+      drafted_counter_argument_verified: out.drafted.adversary.counter_argument_verified,
       element_checklist: out.analyst.element_checklist,
       adversary: {
         counter_argument: out.adversary.counter_argument,
@@ -104,6 +125,8 @@ export async function POST(req: Request) {
         report: out.draft.report,
       },
       drafted: out.drafted,
+      // ADR-004 provenance: which engine produced which stage.
+      engines: out.engines,
       audit: auditRows,
       ms: out.ms,
     });

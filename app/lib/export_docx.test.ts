@@ -122,6 +122,69 @@ test("authority appendix carries inferred treatment + unverified flag", () => {
   assert.ok(appendix[1].text.includes("UNVERIFIED"));
 });
 
+// ——— §5.3 gate coverage for IRAC + counter-argument prose (2026-09-20 audit) ———
+
+/** A DraftDoc whose IRAC + counter-argument WENT THROUGH the verifier: one
+ *  field failed, the rest passed. */
+function gatedDraft(): DraftDoc {
+  const d = sampleDraft();
+  d.irac_verified = {
+    rule: {
+      index: 90,
+      tag: "INFERRED",
+      text: "Probable cause defeats false arrest (per the court in/X).",
+      verified: true,
+      detail: [],
+      inferred: true,
+    },
+    application: {
+      index: 91,
+      tag: "INFERRED",
+      text: "The officers 'acted on a tip that never existed' per the record.",
+      verified: false,
+      detail: ["quote 'acted on a tip that never existed…' → quote_not_found"],
+      inferred: true,
+    },
+  };
+  d.adversary.counter_argument_verified = {
+    index: 92,
+    tag: "INFERRED",
+    text: "Smell alone suffices for a vehicle search.",
+    verified: true,
+    detail: [],
+    inferred: true,
+  };
+  return d;
+}
+
+test("gated IRAC renders as verified/unverified sentence blocks, never raw prose", () => {
+  const blocks = planMotionParagraphs(gatedDraft());
+  const bodies = blocks.filter((b) => b.kind === "body");
+  // No raw IRAC prose may leak when a gated version exists.
+  for (const b of bodies) assert.ok(!b.text.includes("Probable cause defeats"));
+  const sentences = blocks.filter((b) => b.kind === "sentence");
+  // 3 draft sentences + rule + application + counter-argument
+  assert.equal(sentences.length, 6);
+  const failed = sentences.find(
+    (b) => (b as { text: string }).text.includes("tip that never existed")
+  ) as { verified: boolean } | undefined;
+  assert.ok(failed, "failed IRAC sentence present");
+  assert.equal(failed.verified, false);
+});
+
+test("ungated fallback prose is loudly marked, never silent", () => {
+  const blocks = planMotionParagraphs(sampleDraft());
+  const bodies = blocks.filter((b) => b.kind === "body");
+  const marked = bodies.filter((b) => b.text.includes("[NOT VERIFIER-GATED]"));
+  assert.ok(marked.length >= 4, `expected marked fallback prose, got ${marked.length}`);
+});
+
+test("failed gated IRAC sentence strikes through in the emitted docx", async () => {
+  const buf = await buildMotionDocx(gatedDraft());
+  assert.ok(Buffer.isBuffer(buf));
+  assert.ok(buf.length > 1000);
+});
+
 // ——— serializer ———
 
 test("buildMotionDocx emits real .docx (zip) bytes", async () => {

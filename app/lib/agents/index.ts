@@ -15,6 +15,12 @@
  */
 
 import { generate } from "../llm.js";
+import type { EngineId } from "../llm.js";
+import {
+  normalizeModelText,
+  normalizeProse,
+  normalizeTaggedSentences,
+} from "../normalize.js";
 import type Database from "better-sqlite3";
 import { search, extractPassage, matchJurisdiction, type SearchHit } from "../retrieval/search.js";
 
@@ -32,6 +38,8 @@ export interface IntakeOutput {
   unknowns: string[];
   /** Free-form note. */
   note: string | null;
+  /** Engine that produced this output (ADR-004 provenance). */
+  engine?: EngineId;
 }
 
 const INTAKE_SYSTEM = `You are the intake analyst for a US case-law research workbench.
@@ -70,6 +78,7 @@ export async function intakeAgent(facts: string): Promise<IntakeOutput> {
     system: INTAKE_SYSTEM,
     maxTokens: 1500,
     jsonMode: true,
+    stage: "intake",
   });
   const parsed = parseJson<IntakeOutput>(r.content, "intake");
   // Shape gate: Ollama's format:"json" guarantees valid JSON, not the
@@ -77,13 +86,20 @@ export async function intakeAgent(facts: string): Promise<IntakeOutput> {
   // becomes [] instead of a TypeError minutes later in the researcher or
   // the drafter.
   return {
-    jurisdiction: typeof parsed.jurisdiction === "string" ? parsed.jurisdiction : null,
+    jurisdiction:
+      typeof parsed.jurisdiction === "string"
+        ? normalizeProse(parsed.jurisdiction)
+        : null,
     parties: typeof parsed.parties === "object" && parsed.parties !== null ? parsed.parties : {},
-    claims: stringArray(parsed.claims),
-    facts: stringArray(parsed.facts),
-    requested_relief: typeof parsed.requested_relief === "string" ? parsed.requested_relief : null,
-    unknowns: stringArray(parsed.unknowns),
-    note: typeof parsed.note === "string" ? parsed.note : null,
+    claims: stringArray(parsed.claims).map(normalizeProse),
+    facts: stringArray(parsed.facts).map(normalizeProse),
+    requested_relief:
+      typeof parsed.requested_relief === "string"
+        ? normalizeProse(parsed.requested_relief)
+        : null,
+    unknowns: stringArray(parsed.unknowns).map(normalizeProse),
+    note: typeof parsed.note === "string" ? normalizeProse(parsed.note) : null,
+    engine: r.engine,
   };
 }
 
@@ -101,6 +117,8 @@ export interface ResearcherOutput {
   hits: SearchHit[];
   /** Per-query top-1 hit for the agent's narrative. */
   top_picks: Array<{ q: string; hit: SearchHit | null }>;
+  /** Engine that produced the queries (ADR-004 provenance). */
+  engine?: EngineId;
 }
 
 const RESEARCHER_SYSTEM = `You are the researcher for a US case-law research
@@ -135,6 +153,7 @@ export async function researcherAgent(
     system: RESEARCHER_SYSTEM,
     maxTokens: 600,
     jsonMode: true,
+    stage: "researcher",
   });
   const parsed = parseJson<Omit<ResearcherOutput, "hits" | "top_picks">>(r.content, "researcher");
   // Shape gate: a non-array or empty queries list cannot be repaired —
@@ -173,7 +192,15 @@ export async function researcherAgent(
       allHits.push(h);
     }
   }
-  return { queries, hits: allHits, top_picks };
+  return {
+    queries: queries.map((q) => ({
+      q: normalizeProse(q.q),
+      why: typeof q.why === "string" ? normalizeProse(q.why) : "",
+    })),
+    hits: allHits,
+    top_picks,
+    engine: r.engine,
+  };
 }
 
 // =====================================================================
@@ -190,6 +217,8 @@ export interface AnalystOutput {
   element_checklist: Array<{ element: string; status: "met" | "unmet" | "unknown"; basis: string }>;
   /** Every sentence the analyst wrote, tagged per §5.3. */
   tagged_sentences: Array<{ tag: "RECORD" | "LAW" | "INFERRED"; text: string; pin_cite?: string }>;
+  /** Engine that produced this output (ADR-004 provenance). */
+  engine?: EngineId;
 }
 
 const ANALYST_SYSTEM = `You are the analyst for a US case-law research workbench.
@@ -260,13 +289,19 @@ export async function analystAgent(
       scores: h.scores,
       treatment_flags: h.treatment_flags,
       cited_by_recent: h.cited_by_recent,
-      passages: h.passages,
+      // Passage TEXT only. The raw {text, start, end} objects leaked numeric
+      // char offsets into the prompt and the model copied one back as a
+      // "pin cite" — live run 2026-09-09 produced "(26065)" from offset
+      // 26065. render.ts now catches that downstream; this removes the
+      // source. Never put machine-internal fields in a model payload.
+      passages: h.passages.map((p) => p.text),
     })),
   };
   const r = await generate(JSON.stringify(payload), {
     system: ANALYST_SYSTEM,
     maxTokens: 4000,
     jsonMode: true,
+    stage: "analyst",
   });
   const parsed = parseJson<AnalystOutput>(r.content, "analyst");
   // Shape gate: run.ts spreads tagged_sentences right after this call — a
@@ -290,9 +325,21 @@ export async function analystAgent(
     );
   }
   return {
-    irac,
-    element_checklist: Array.isArray(parsed.element_checklist) ? parsed.element_checklist : [],
-    tagged_sentences: tagged,
+    irac: {
+      issue: normalizeProse(irac.issue),
+      rule: normalizeProse(irac.rule),
+      application: normalizeProse(irac.application),
+      conclusion: normalizeProse(irac.conclusion),
+    },
+    element_checklist: (Array.isArray(parsed.element_checklist) ? parsed.element_checklist : []).map(
+      (el: { element?: unknown; status?: unknown; basis?: unknown }) => ({
+        element: typeof el?.element === "string" ? normalizeProse(el.element) : "",
+        status: el?.status === "met" || el?.status === "unmet" || el?.status === "unknown" ? el.status : "unknown",
+        basis: typeof el?.basis === "string" ? normalizeProse(el.basis) : "",
+      })
+    ),
+    tagged_sentences: normalizeTaggedSentences(tagged),
+    engine: r.engine,
   };
 }
 
@@ -307,6 +354,8 @@ export interface AdversaryOutput {
   tagged_sentences: Array<{ tag: "RECORD" | "LAW" | "INFERRED"; text: string; pin_cite?: string }>;
   /** Treatment status of cited cases from the analyst's pass. */
   treatment_caveats: string[];
+  /** Engine that produced this output (ADR-004 provenance). */
+  engine?: EngineId;
 }
 
 const ADVERSARY_SYSTEM = `You are the adversary for a US case-law research workbench.
@@ -386,22 +435,26 @@ export async function adversaryAgent(
       case_name: h.case_name,
       date_filed: h.date_filed,
       court_id: h.court_id,
-      passages: h.passages,
+      // Passage TEXT only — see the analyst payload for the (26065) story.
+      passages: h.passages.map((p) => p.text),
     })),
   };
   const r = await generate(JSON.stringify(payload), {
     system: ADVERSARY_SYSTEM,
     maxTokens: 2500,
     jsonMode: true,
+    stage: "adversary",
   });
   const parsed = parseJson<Omit<AdversaryOutput, "counter_authority">>(r.content, "adversary");
   // Shape gate: the adversary may legitimately come back thin (0 hits is a
   // documented mode) — coerce deviations, never throw.
   return {
-    counter_argument: typeof parsed.counter_argument === "string" ? parsed.counter_argument : "",
+    counter_argument:
+      typeof parsed.counter_argument === "string" ? normalizeProse(parsed.counter_argument) : "",
     counter_authority: counterHits,
-    tagged_sentences: validTaggedSentences(parsed.tagged_sentences),
-    treatment_caveats: stringArray(parsed.treatment_caveats),
+    tagged_sentences: normalizeTaggedSentences(validTaggedSentences(parsed.tagged_sentences)),
+    treatment_caveats: stringArray(parsed.treatment_caveats).map(normalizeProse),
+    engine: r.engine,
   };
 }
 
@@ -549,6 +602,29 @@ function stringArray(v: unknown): string[] {
   return v.filter((s): s is string => typeof s === "string");
 }
 
+/**
+ * A pin cite is a volume-reporter-page string ("410 U.S. 113") or a
+ * statutory section ("42 U.S.C. § 1983") — NEVER a bare number. The live
+ * run of 2026-09-09 emitted pin_cite "26065" (a char offset copied from
+ * the retrieval payload) and it rendered as verified text "(26065)".
+ * render.ts now fails the sentence downstream; this gate rejects the junk
+ * at the SOURCE so the verifier never sees a fake-looking pin and the
+ * sentence keeps its original LAW tag semantics (empty pin → LAW-without-
+ * pin failure, which is the honest verdict).
+ */
+const PIN_CITE_RE = /^[\dA-Za-z.'’§\s-]{2,40}$/;
+const BARE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+function validPinCite(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  if (!t || !PIN_CITE_RE.test(t)) return undefined;
+  // A bare number is never a citation: it is a leaked offset/index/rowid.
+  // Drop it rather than pass it through — the render gate would otherwise
+  // spend an extraction on "(26065)".
+  if (BARE_NUMBER_RE.test(t)) return undefined;
+  return t;
+}
+
 /** §5.3-tagged sentences only: an untagged or text-less entry would either
  *  trip the render gate or die downstream, so it never enters the draft. */
 function validTaggedSentences(v: unknown): AgentTaggedSentence[] {
@@ -561,10 +637,11 @@ function validTaggedSentences(v: unknown): AgentTaggedSentence[] {
       (t.tag === "RECORD" || t.tag === "LAW" || t.tag === "INFERRED") &&
       typeof t.text === "string"
     ) {
+      const pin = validPinCite(t.pin_cite);
       out.push({
         tag: t.tag,
         text: t.text,
-        ...(typeof t.pin_cite === "string" ? { pin_cite: t.pin_cite } : {}),
+        ...(pin ? { pin_cite: pin } : {}),
       });
     }
   }

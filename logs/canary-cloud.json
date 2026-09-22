@@ -1,0 +1,19 @@
+{
+  "ran_at": "2026-09-22T18:12:25.482Z",
+  "pattern": "g3-01-motel-1983",
+  "model": "gemini-2.0-flash",
+  "engines": "intake=cloud, analyst=cloud",
+  "verdict": "PASS",
+  "fabricated": {
+    "pin_cite": "741 F.4th 1101",
+    "struck_through": true,
+    "detail": [
+      "cite '741 F.4th 1101' → unresolved_citation",
+      "cite '741 F.4th 1101' → unresolved_citation"
+    ]
+  },
+  "honest": {
+    "verified": 6,
+    "total": 7
+  }
+}

@@ -26,6 +26,36 @@ export interface HitCard {
   via_parenthetical_recall?: boolean;
 }
 
+/** ADR-004 per-stage engine provenance. */
+export interface StageEngine {
+  stage: string;
+  engine: string;
+  model: string;
+}
+
+/** Client mirror of the verification certificate (lib/certificate.ts). */
+export interface VerificationCertificateClient {
+  schema: string;
+  issued_at: string;
+  case_id: number;
+  run_id: number | null;
+  draft_sha256: string;
+  audit_row_id: number | null;
+  overall: string;
+  summary: Record<string, number>;
+  banner: string;
+  citations: Array<{
+    citation: string;
+    case_name: string | null;
+    status: string;
+    verified: boolean;
+    inferred_treatment: string[];
+    ambiguous: boolean;
+  }>;
+  engines: Array<{ stage: string; engine: string; model: string }>;
+  statement: string;
+}
+
 export interface RunResponse {
   case_id: number;
   run_id: number;
@@ -36,6 +66,12 @@ export interface RunResponse {
     hits: HitCard[];
   };
   irac: { issue: string; rule: string; application: string; conclusion: string };
+  /** Per-field verified IRAC sentences (2026-09-20 §5.3 gate coverage).
+   *  Failed fields carry verified:false and render struck-through. */
+  drafted_irac_verified?: Partial<
+    Record<"issue" | "rule" | "application" | "conclusion", VerifiedSentence>
+  >;
+  drafted_counter_argument_verified?: VerifiedSentence;
   element_checklist: Array<{ element: string; status: string; basis: string }>;
   adversary: { counter_argument: string; treatment_caveats: string[]; counter_authority: HitCard[] };
   draft: { overall: "pass" | "fail"; sentences: VerifiedSentence[]; report: unknown };
@@ -43,10 +79,13 @@ export interface RunResponse {
     banner: string;
     title: string;
     caption: string;
-    authority_appendix: Array<{ citation: string; case_name: string | null; verified: boolean; inferred_treatment: string[] }>;
+    authority_appendix: Array<{ citation: string; case_name: string | null; verified: boolean; inferred_treatment: string[]; ambiguous?: boolean }>;
     verification: { overall: string; summary: Record<string, number> };
+    certificate?: VerificationCertificateClient;
     generated_at: string;
   };
+  /** Which engine produced which stage (ADR-004). */
+  engines?: StageEngine[];
   audit: Array<{ ts: string; kind: string; payload: string }>;
   ms: number;
 }

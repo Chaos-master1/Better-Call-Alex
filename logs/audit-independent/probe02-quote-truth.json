@@ -1,0 +1,232 @@
+{
+  "probe": "phase0.2 quote-attribution ground truth + adversarial mutations",
+  "date": "2026-09-20",
+  "seed": 20260920,
+  "production_path": "app/lib/verify/verify.ts -> core.ts -> quotes.ts (bridge: verifier/bridge.py)",
+  "positive_controls": {
+    "n": 150,
+    "verified_rate": 0.5333,
+    "note": "1.0 means no false strikes of real, correctly-attributed quotes",
+    "failure_kinds": {
+      "quote_wrong_case|cite:ok": 6,
+      "unattributedverifiedverified|cite:ok": 1,
+      "quote_not_found|cite:ok": 12,
+      "verified|cite:unsupported_form+unsupported_form+unsupported_": 2,
+      "verified|cite:unsupported_form+verified": 16,
+      "verified|cite:verified+unresolved_citation": 6,
+      "quote_not_found|cite:unsupported_form+verified": 3,
+      "verified|cite:unresolved_citation+verified": 2,
+      "quote_not_found|cite:unsupported_form+unsupported_form+verif": 2,
+      "verified|cite:verified+unsupported_form": 3,
+      "verified|cite:unresolved_citation+unsupported_form+verified": 1,
+      "verifiedquote_not_foundquote_not_found|cite:ok": 1,
+      "verifiedverified|cite:unsupported_form+verified": 3,
+      "unattributed|cite:unsupported_form+unresolved_citation+unres": 1,
+      "unattributedverified|cite:ok": 1,
+      "quote_not_found|cite:unsupported_form+verified+verified": 1,
+      "verifiedverified|cite:unsupported_form+unsupported_form+veri": 1,
+      "quote_wrong_case|cite:unsupported_form+unsupported_form+veri": 1,
+      "verified|cite:unresolved_citation+unresolved_citation+unreso": 1,
+      "verifiedverified|cite:unsupported_form+unsupported_form+unsu": 1,
+      "verifiedquote_wrong_case|cite:ok": 1,
+      "verifiedverified|cite:unsupported_form+unresolved_citation+v": 1,
+      "unattributed|cite:unresolved_citation": 2,
+      "quote_not_found|cite:unresolved_citation+unsupported_form+ve": 1
+    },
+    "failures": [
+      {
+        "opinion_id": 3405059,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_wrong_case|cite:ok",
+        "ok": false,
+        "detail": "“To justify a charge on a given subject, it is not necessary there should be direct evidence going to that point; it is "
+      },
+      {
+        "opinion_id": 7487287,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "unattributed,verified,verified|cite:ok",
+        "ok": false,
+        "detail": "Black’s Law Dictionary describes “solvency” as “ability to pay debts as they mature; ability to pay debts in the usual a"
+      },
+      {
+        "opinion_id": 3217947,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_not_found|cite:ok",
+        "ok": false,
+        "detail": "I conclude that it \"clearly\" made such an exception. ¶4 This type of accident fits within the category of a \"going and c"
+      },
+      {
+        "opinion_id": 2240421,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_not_found|cite:ok",
+        "ok": false,
+        "detail": "State, (1975) 263 Ind. 618, 621 , 335 N.E.2d 811, 814 , the defendant recognizes that counsel “ ‘is presumed to have pre"
+      },
+      {
+        "opinion_id": 761069,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_wrong_case|cite:ok",
+        "ok": false,
+        "detail": "Clark said that he knew Defendant was involved with the five pounds of methamphetamine because \"Joe Altamirano and Ricar"
+      },
+      {
+        "opinion_id": 8959277,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:unsupported_form+unsupported_form+unsupported_form+unsupported_form+verified",
+        "ok": false,
+        "detail": "As Colorado River makes clear, abstention is the exception, not the rule, and is justified only in the exceptional circu"
+      },
+      {
+        "opinion_id": 5889684,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:unsupported_form+verified",
+        "ok": false,
+        "detail": "Although juror No. 1 told the court that he could render an impartial verdict based solely on the evidence, these words "
+      },
+      {
+        "opinion_id": 8728019,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:verified+unresolved_citation",
+        "ok": false,
+        "detail": "In the New Britain Case the only question to be determined was which of two tax liens had priority and the court, relyin"
+      },
+      {
+        "opinion_id": 1629893,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_not_found|cite:unsupported_form+verified",
+        "ok": false,
+        "detail": "Prisoners are monitored, not to preclude them from transfers, temporary releases, or participation in community activiti"
+      },
+      {
+        "opinion_id": 4367353,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_wrong_case|cite:ok",
+        "ok": false,
+        "detail": "Martin, 923 So. 2d 1236, 1238-39 (Fla. 1st DCA 2006)) (holding “only the ‘enhancement in value and appreciation’ . . . b"
+      },
+      {
+        "opinion_id": 1676858,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:unsupported_form+verified",
+        "ok": false,
+        "detail": "The question is whether “the facts submitted to the magistrate are sufficient to justify a conclusion that the property "
+      },
+      {
+        "opinion_id": 4639021,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:unresolved_citation+verified",
+        "ok": false,
+        "detail": "\"The fact that a contract exists designating a person as an independent contractor is to be considered, but is not dispo"
+      },
+      {
+        "opinion_id": 9822194,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_not_found|cite:unsupported_form+unsupported_form+verified",
+        "ok": false,
+        "detail": "See Cochran, 369 Ark. at 170 , 251 S.W.3d at 263 (stating that the doctrine of laches requires “a showing of some sort t"
+      },
+      {
+        "opinion_id": 3531775,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_wrong_case|cite:ok",
+        "ok": false,
+        "detail": "Eisenhour, 132 Mo. 1 . c. 147: “Positive corroborating evidence is not required either in perjury or in case of seductio"
+      },
+      {
+        "opinion_id": 750638,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:verified+unresolved_citation",
+        "ok": false,
+        "detail": "We, like the district court, must uphold the Commission's determination to disclose the information unless it is \"arbitr"
+      },
+      {
+        "opinion_id": 329437,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:unsupported_form+verified",
+        "ok": false,
+        "detail": "It noted his vigorous cross examination of these witnesses and concluded there was “slight, if any, possibility of preju"
+      },
+      {
+        "opinion_id": 215405,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:verified+unresolved_citation",
+        "ok": false,
+        "detail": "The Antiterrorism and Effective Death Penalty Act (“AEDPA”) prohibits a federal court from granting a writ of habeas cor"
+      },
+      {
+        "opinion_id": 2522585,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:verified+unresolved_citation",
+        "ok": false,
+        "detail": "Title VII’s retaliation provision makes it unlawful for an employer to discriminate against an employee because she “has"
+      },
+      {
+        "opinion_id": 8513412,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "verified|cite:verified+unsupported_form",
+        "ok": false,
+        "detail": "“For the purpose of inheritance to, through, and from a legally adopted child, such child shall be treated the same as i"
+      },
+      {
+        "opinion_id": 6202920,
+        "kind": "positive-real-quote",
+        "expect": "all verified",
+        "got": "quote_not_found|cite:ok",
+        "ok": false,
+        "detail": "“Once the State [or city] embarks into the area of housing as a function of government, that function, like other govern"
+      }
+    ]
+  },
+  "adversarial": {
+    "n": 170,
+    "catch_rate": 1,
+    "by_kind": {
+      "altered_name": {
+        "n": 35,
+        "caught": 35,
+        "catch_rate": 1
+      },
+      "transposed_words": {
+        "n": 38,
+        "caught": 38,
+        "catch_rate": 1
+      },
+      "dropped_negation": {
+        "n": 34,
+        "caught": 34,
+        "catch_rate": 1
+      },
+      "altered_number": {
+        "n": 13,
+        "caught": 13,
+        "catch_rate": 1
+      },
+      "wrong_case_attribution": {
+        "n": 50,
+        "caught": 50,
+        "catch_rate": 1
+      }
+    },
+    "misses": []
+  },
+  "verdict": "PARTIAL — fabrication catch perfect but false-strike rate too high"
+}
