@@ -14,8 +14,14 @@ export const APP_PATH = path.join(REPO, "data", "app.sqlite");
 export function openCorpus(): Database.Database {
   const db = new Database(CORPUS_PATH, { readonly: true, fileMustExist: true });
   db.pragma("query_only = 1");
-  // 2 GB window: keeps hot regions of opinions_fts addressable across calls.
-  db.pragma("mmap_size = 2147483648");
+  // 8 GB window: the six-query bench round-robin evicts a 2 GB window's hot
+  // lexicon/postings pages every round (measured warm p95 2.8 s vs 0.5 s
+  // standalone); 8 GB keeps the shared lexicon resident. The OS maps lazily
+  // and caps by memory pressure — the 197 GB corpus is never forced.
+  db.pragma("mmap_size = 8589934592");
+  // Default pager cache is 2 MB; 64 MB cuts b-tree (clusters/cites/meta)
+  // re-reads between statements on this same handle.
+  db.pragma("cache_size = -65536");
   return db;
 }
 
@@ -31,6 +37,12 @@ export interface LookupResult {
   citation_count: number | null;
   cited_by: number;
   citations: { volume: string; reporter: string; page: string; type: string }[];
+  /** Every distinct cluster this cite identifies. probe04 (independent
+   *  audit 2026-09-20): 7.2% of (volume, reporter, page) groups collide
+   *  across clusters ("1 A.2d 321" → 3 clusters). Resolution still returns
+   *  the lead-preferred row; >1 entry means the cite is AMBIGUOUS and
+   *  callers must not claim uniqueness. */
+  all_cluster_ids?: number[];
 }
 
 /** Fallback spellings when a parsed reporter does not match storage. */
@@ -153,6 +165,7 @@ export function resolveCluster(
         page: r.page,
         type: r.type,
       })),
+      all_cluster_ids: [...new Set(rows.map((r) => r.cluster_id))],
     };
   }
   return null;

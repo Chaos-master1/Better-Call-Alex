@@ -1,0 +1,27 @@
+sampling parenthetical pairs...
+parenthetical pool: 6300772
+parenthetical queries: 150
+sampling citing-context pairs...
+context pool: 400000
+total queries: 200
+
+  25/200
+  50/200
+  75/200
+  100/200
+  125/200
+  150/200
+  175/200
+  200/200
+zero-hit queries (strict AND): 18/200
+
+A/B: plain p@10=0.325 prf p@10=0.325 gained=0 lost=0
+A/B verdict: CUT — PRF does not improve mechanical p@10 (§2 rule)
+A/B density: plain p@10=0.325 density p@10=0.335 gained=2 lost=0
+density verdict: KEEP — density re-rank improves overall p@10 with more gains than losses
+
+mechanical p@10 overall: 0.325
+  parenthetical: 0.4267
+  citing_context: 0.02
+verdict: REASONABLE — mechanical p@10 in the same band as the hand-built set
+-> /home/Houssem/Desktop/projects/Better Call Alex/Better Call Alex/logs/audit-independent/probe03-retrieval-truth.json

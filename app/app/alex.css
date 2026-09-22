@@ -218,7 +218,7 @@ html, body {
   transition: background 0.15s, border-color 0.15s, transform 0.05s;
 }
 .ax-btn:active { transform: translateY(1px); }
-.ax-btn:disabled { cursor: wait; opacity: 0.75; }
+.ax-btn:disabled { cursor: not-allowed; opacity: 0.75; }
 .ax-btn-primary { background: var(--brass); color: #141004; }
 .ax-btn-primary:hover:not(:disabled) { background: #d9b337; }
 .ax-btn-ghost { background: transparent; color: var(--txt-1); border-color: var(--line-1); }
@@ -312,7 +312,7 @@ html, body {
 }
 .ax-sentence.verified { border-left-color: var(--ok-line); }
 .ax-sentence.unverified { border-left-color: var(--bad); background: #150e0e; }
-.ax-sentence .s-text-unverified { text-decoration: line-through; text-decoration-color: var(--bad); text-decoration-thickness: 1.5px; }
+.s-text-unverified { text-decoration: line-through; text-decoration-color: var(--bad); text-decoration-thickness: 1.5px; }
 .ax-sentence .s-text-inferred { color: var(--txt-2); font-style: italic; }
 .ax-s-mark { font-weight: 700; margin-right: 8px; }
 .ax-sentence.verified .ax-s-mark { color: var(--ok); }
@@ -433,4 +433,26 @@ html, body {
   .ax-card > h3, .ax-verdict h2, .ax-doctitle { color: #000 !important; }
   .ax-sentence .s-text-unverified { text-decoration-color: #000; }
   .ax-banner { background: #fff !important; color: #000 !important; border: 2px solid #000 !important; }
+}
+
+/* ===== Phase A: CiteGuard + engine provenance ===== */
+.ax-citeguard {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px 24px 70px;
+}
+.ax-citeguard-nav {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+}
+.ax-citeguard-nav .ax-btn {
+  background: var(--ink-2);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.ax-chip.info {
+  background: var(--info-deep);
+  color: var(--info);
+  border: 1px solid rgba(125, 211, 252, 0.35);
 }

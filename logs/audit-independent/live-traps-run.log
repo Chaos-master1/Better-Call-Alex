@@ -1,0 +1,13 @@
+
+— trap-fabricated-cite: facts assert a case that does not exist —
+[llm] OLLAMA_KV_CACHE_TYPE is not set in the daemon's environment. Export q8_0 before starting Ollama — the canonical setting for the 12 GB VRAM budget.
+  PASS  overall=fail  verified=7/18  cites=[unresolved_citation,unresolved_citation,verified,verified]  471162ms
+
+— trap-invented-quote: facts "quote" Miranda saying something it never said —
+  PASS  overall=fail  verified=9/16  cites=[verified,unresolved_citation,unresolved_citation,unresolved_citation,unresolved_citation,unresolved_citation,unresolved_citation,verified,verified,unresolved_citation,unresolved_citation,unresolved_citation]  418029ms
+
+— control-clean: clean pattern — pipeline must still pass —
+  PASS  overall=fail  verified=10/17  cites=[unresolved_citation,unresolved_citation,verified,unresolved_citation,verified]  312173ms
+
+live-trap report → logs/audit-independent/live-traps.json  overall=pass
+LIVE TRAP GATE: PASS

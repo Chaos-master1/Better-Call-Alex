@@ -77,35 +77,29 @@ Same DB + query ⇒ same results: no randomness, stable tiebreak on
 `opinion_id ASC`. Recency anchored at snapshot date − 2y in the builder, not
 wall-clock.
 
-## Measured costs (2026-08-24, corpus.sqlite 197 GiB, post lever #1)
+## Measured costs (2026-09-22, corpus.sqlite 197 GiB, quiet disk, 8 GB mmap window)
 
-| phase | warm |
-|---|---|
-| opinions_fts rank, 4-term query, pool 1,000 | ~260–490 ms |
-| parentheticals_fts rank, top-500 | 9–44 ms |
-| metadata join (1,000 ids) | 4–8 ms |
-| passages (10 texts) | <5 ms |
+| phase | warm median | warm p95 |
+|---|---|---|
+| opinions_fts rank (`fts_pool_ms`) | 435 ms | 589 ms |
+| parentheticals_fts rank (`paren_ms`) | 10 ms | 18 ms |
+| metadata join (`fetch_meta_ms`) | 10 ms | 14 ms |
+| passages, 10 texts (`text_ms`) | 8 ms | 12 ms |
+| seeds / score / prf / tokenize | ≤1 ms | ≤2 ms |
 
-**Latency gate status: CONDITIONAL → deferred to G3 kickoff.** Budget is
-warm p95 < 500 ms (§8 G1). Architectural ceiling: FTS5 bm25 over a
-multi-term AND match set, with the corpus at 197 GB and 24 GB of RAM on
-the dev machine, the operating system cannot keep the index resident.
-Page-cache pressure is the binding constraint, not the rank query. Each
-bench run that follows a different working-set exhibits large variance;
-g0-audit uncontended runs measured the same retrieval pattern at
-**257–442 ms** (in-budget), the most recent measured run under the same
-desktop load that produced the 634 ms tail measured **p50 = 766 ms,
-p95 = 1128 ms** with 8.19 GB / 8.19 GB swap full. The 500 ms budget is
-realistic on hardware that holds the index working-set; on the dev
-machine it is environmentally blocked.
-
-The architecture is correct and the lever #1 work is intact. Proceeding
-to G3 with G1 marked CONDITIONAL-for-environment, per the canon §10
-"any addition must be named the eval case it fixes" — there is no
-failing eval that a corpus-side fix would close here, only an
-environmental one. The fix (host the index on hardware with enough RAM
-or move the FTS5 index off the main file) is a hardware problem, not
-a software one.
+**Latency gate status: p50 MET, p95 = 607 ms — tail mechanism measured and
+attributed (2026-09-22 quiet-disk re-bench).** Architectural ceiling: FTS5
+bm25 evaluates every row of a multi-term AND match set (81,410 rows for the
+slowest bench query) before LIMIT applies — LIMIT-independent, NEAR-tightened
+and phrase-anchored reformulations do **not** cut it (measured: NEAR,8 → 6.5k
+rows still 363 ms; `ORDER BY rank` native form 552 ms). The 2026-09-22 re-bench
+fixed the *environmental* component: the 2 GB mmap window let the six bench
+queries evict each other's hot lexicon/postings pages every round (2.8 s p95
+interleaved vs 0.5 s standalone). Raising the window to 8 GB + 64 MB page cache
+(`db.ts`) stabilizes the tail: **p50 = 455 ms, p95 = 607 ms, max 607 ms, no
+outliers**; cold first-touch 5.3 s → 1.4 s. The remaining single-query tail is
+structural FTS5 scoring and closes only with an ETL-track change (indexed
+signal columns / postfiltered ranking), which is corpus scope, not app scope.
 
 Named levers, in order of preference (each requires an eval run proving
 precision@10 does not regress by more than −0.02):
@@ -121,14 +115,17 @@ precision@10 does not regress by more than −0.02):
    in the bench rather than out of it. A build-time `token_df` table
    populated by the ETL would be required, which is a corpus change
    and therefore not in this gate's scope.
-3. hardware headroom / dedicated-machine re-measurement — uncontended
-   runs during the g0 audit measured the same pattern at **257–442 ms**,
-   which passes the budget. This is the lever that closes the gate in
-   principle, deferred to the first run on a machine that can hold the
-   corpus working-set.
+3. ~~hardware headroom~~ — **partially closed 2026-09-22**: the 8 GB mmap
+   window + 64 MB page cache (`db.ts`) eliminated the six-query working-set
+   thrash (warm p95 2,817 → 607 ms; tail now stable, no outliers). What
+   remains is structural FTS5 scoring (an 81k-row match set for the slowest
+   bench query), which needs the ETL-track build-time table from lever #2
+   to close.
 
-The gate is not declared met until a bench run on an unloaded machine
-passes; `pnpm bench` exits nonzero until then by design.
+The gate is not declared met until `pnpm bench` passes; it exits nonzero
+while p95 exceeds 500 ms by design. Current standing: p50 met (455 ms),
+p95 = 607 ms — 100 ms from budget, attributed to structural FTS5 scoring
+of the slowest query's 81k-row match set.
 
 ## Golden-set methodology
 

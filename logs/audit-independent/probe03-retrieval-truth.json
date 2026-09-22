@@ -1,0 +1,186 @@
+{
+  "probe": "phase0.3 mechanical retrieval ground truth (parenthetical + citing-context pairs)",
+  "date": "2026-09-20",
+  "seed": 20260920,
+  "n_queries": 200,
+  "precision_at_10_overall": 0.325,
+  "by_kind": {
+    "parenthetical": 0.4267,
+    "citing_context": 0.02
+  },
+  "golden_reference": {
+    "precision_at_10": 0.2883,
+    "source": "evals/golden/golden.json (hand-built)"
+  },
+  "ab_prf": {
+    "mode": "A/B citation-graph PRF (opts.prf)",
+    "plain_p10": 0.325,
+    "prf_p10": 0.325,
+    "queries_gained": 0,
+    "queries_lost": 0,
+    "lost_detail": [],
+    "verdict": "CUT — PRF does not improve mechanical p@10 (§2 rule)"
+  },
+  "ab_density": {
+    "mode": "A/B passage-density re-rank (opts.densityRerank)",
+    "plain_p10": 0.325,
+    "density_p10": 0.335,
+    "queries_gained": 2,
+    "queries_lost": 0,
+    "lost_detail": [],
+    "verdict": "KEEP — density re-rank improves overall p@10 with more gains than losses"
+  },
+  "sample_failures": [
+    {
+      "kind": "parenthetical",
+      "q": "discussing difference between Article III standing and principles including a (1) prohibition on a litigant raising another person's legal r",
+      "answer": "Lexmark Int'l, Inc. v. Static Control Components, Inc."
+    },
+    {
+      "kind": "parenthetical",
+      "q": "no separate cause of action under New Jersey law",
+      "answer": "Schwartz v. United Jersey Bank"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "the prosecutorial discretion of the Attorney General cannot be made subject to a writ of mandamus",
+      "answer": "Livermore v. Attorney Gen., State of Rhode Island"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "absent clear legislative intent, statutes should not be interpreted so as to defy plain meaning",
+      "answer": "Escondido Mutual Water Co. v. La Jolla Band of Mission Indians"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "Price, J., concurring in denial of petition for discretionary review on ground that court of criminal appeals possessed no jurisdiction beca",
+      "answer": "Timmons v. Pecorino"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“‘[S]ubstantially’ in the phrase ‘substantially limits’ suggests ‘considerable’ or ‘to a large degree.’”",
+      "answer": "Toyota Motor Manufacturing, Kentucky, Inc. v. Williams"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "the “‘amended complaint supersedes the original, the latter 15 being treated thereafter as non-existent.’”",
+      "answer": "Hackford v. Babbitt"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "finding the written description insufficient where the patent claimed purified DNA encoding human fibroblast interferon-beta polypeptide, bu",
+      "answer": "Walter C. Fiers v. Michel Revel and Pierre Tiollais v. Haruo Sugano, Masami Muramatsu and Tadatsugu Taniguchi"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "indirect impact on nontaxpaying business does not implicate Due Process Clause even though no judicial review otherwise available",
+      "answer": "Investment Annuity, Inc. v. W. Michael Blumenthal as Secretary of the Treasury of the United States"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“Corporate agents cannot be liable for tortious interference with the corporation’s contracts or business relationships unless they acted so",
+      "answer": "Raakesh Bhan v. Battle Creek Health Sys."
+    },
+    {
+      "kind": "parenthetical",
+      "q": "if there is any doubt, the court should construe the dispute as minor",
+      "answer": "Air Line Pilots Association, International v. Eastern Air Lines, Inc."
+    },
+    {
+      "kind": "parenthetical",
+      "q": "party to contract must at least substantially comply with condition precedent",
+      "answer": "Alvarez v. Rendon"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "showing of disparate treatment in Fair Housing Act case",
+      "answer": "International Brotherhood of Teamsters v. United States"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "Representative Dukes, member of House Committee on Business & Industry",
+      "answer": "Blocker v. State"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "asking the district court to reconsider S",
+      "answer": "St. Bernard General Hospital, Inc. v. Hospital Service Association of New Orleans, Inc."
+    },
+    {
+      "kind": "parenthetical",
+      "q": "presuming that a defendant was domiciled at the residence he had at the time that the plaintiff filed suit (citing Slaughter v. Toye Bros. Y",
+      "answer": "District of Columbia v. Murphy"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“This Court has not ... held that ‘any award of monetary relief must necessarily be ‘legal’ relief.’ ” (emphasis in original) (quoting Curti",
+      "answer": "Chauffeurs, Teamsters & Helpers Local No. 391 v. Terry"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "money was partly used to pay defendant's room rent and board",
+      "answer": "People v. Navarro"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "a valid appellate waiver does not prevent courts from reviewing a sentence that violates the Constitution",
+      "answer": "United States v. Dwight Pollard"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“most district courts have adopted a two-step approach first described in a 1987 decision from a district court in New Jersey”",
+      "answer": "Brooke Clark v. A&L Homecare &Training Ctr."
+    },
+    {
+      "kind": "parenthetical",
+      "q": "\"The test for determining whether litigation has a significant connection with a pending bankruptcy proceeding is whether its outcome might ",
+      "answer": "Publicker Industries Inc. v. United States (In re Cuyahoga Equipment Corp.)"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "deliberate indifference standard to pretrial detainee",
+      "answer": "Grayson v. Peed"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "before the divestiture of AT&T, all long distance calls were subject to tolls, which varied according to the duration of the call and the di",
+      "answer": "Officemax, Inc. v. United States"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“[R]efusal to submit to a breath test . . . tends to show a consciousness of guilt.”",
+      "answer": "Bartlett v. State"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "noting “relevant information that by its very nature would not be found in an agency record”",
+      "answer": "Orion International Technologies v. United States"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "on habeas review, law prohibiting drug possession within 1,000 feet of a “youth pro- gram center” was unconstitutionally vague",
+      "answer": "Walker Whatley v. Dushan Zatecky"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "concluding ordinance providing that a “non-conforming use shall not be extended” limits what may be done as of right",
+      "answer": "Costantino v. Zoning Bd. of Cranston"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "in diversity case, federal district court may veer from the “law of the case” set out by the court of appeals when the applicable state law ",
+      "answer": "Elinor M. Ratay v. The Lincoln National Life Insurance Company"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“[S]earehes and seizures inside a home without a warrant are presumptively unreasonable.”",
+      "answer": "Payton v. New York"
+    },
+    {
+      "kind": "parenthetical",
+      "q": "“[W]hile the concern for officer safety in this context may justify the ‘minimal’ additional intrusion of ordering a driver and passengers o",
+      "answer": "Knowles v. Iowa"
+    }
+  ],
+  "verdict": "REASONABLE — mechanical p@10 in the same band as the hand-built set"
+}

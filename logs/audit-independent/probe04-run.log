@@ -1,0 +1,18 @@
+1. text quality sampling...
+2. cites anchor sampling...
+3. citation_strings collision scan...
+4. blocked coverage...
+5. parenthetical linkage sampling...
+{
+ "sampled": 400,
+ "garbage_rate_overall": 0.0,
+ "garbage_rate_ocr": 0.0,
+ "garbage_rate_non_ocr": 0.0,
+ "ocr_share_of_sample": 0.4525,
+ "note": "garbage = printable_ratio<0.85 or avg_word_len>9.5 \u2014 the OCR down-weight (\u00a79.6) exists for these"
+}
+anchor coherence: 0.025
+collision rate: 0.072327
+blocked share: 0.077619
+paren dangling: 0/300
+-> /home/Houssem/Desktop/projects/Better Call Alex/Better Call Alex/logs/audit-independent/probe04-data-quality.json

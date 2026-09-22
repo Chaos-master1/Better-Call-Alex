@@ -56,7 +56,7 @@ export interface CitationCheck {
   /** char offsets of the citation inside the verified draft text */
   cite_start: number;
   cite_end: number;
-  status: "verified" | "unresolved_citation" | "unsupported_form";
+  status: "verified" | "unresolved_citation" | "unsupported_form" | "out_of_corpus";
   pin_unverified: boolean;
   opinion_id?: number;
   cluster_id?: number;
@@ -64,7 +64,29 @@ export interface CitationCheck {
   inferred_treatment?: string[];
   /** set when form === "statute": row id in the statutes table (G4) */
   statute_id?: number;
+  /** >1 entry: the cite identifies several clusters (probe04: 7.2% of
+   *  (vol, rep, page) groups collide). Annotation only — the draft does
+   *  not fail; ambiguity is visible to the user and the export. */
+  ambiguous_cluster_ids?: number[];
 }
+
+/**
+ * Reporters the corpus CANNOT carry by construction (independent audit
+ * 2026-09-20, probe01: WL cites resolve at 2.65% — the corpus stores
+ * published-reporter citations, never Westlaw numbers). A real opinion
+ * citing "2020 WL 4673834" cites something that exists; failing it as a
+ * suspected FABRICATION is a false strike that punishes honest law.
+ * These get `out_of_corpus` (annotation, not rejection) — same family as
+ * short-form `unsupported_form`. Anything NOT on this list that fails to
+ * resolve stays `unresolved_citation` and fails the draft.
+ */
+const OUT_OF_CORPUS_REPORTERS = new Set([
+  "WL",
+  "WESTLAW",
+  "LEXIS",
+  "LEXSEE",
+  "2017 WL", // never matched, but keeps a malformed year-prefixed form safe
+]);
 
 export interface QuoteCheck {
   quote: string;
@@ -77,7 +99,11 @@ export interface QuoteCheck {
   true_source?: {
     case_name: string;
     cluster_id: number;
-    opinion_id: number;
+    opinion_id: number;  /** set when the true source sits INSIDE the cited case's cluster (a
+   *  sibling opinion of it — dissent, concurrence, later text), or inside
+   *  one of the clusters an ambiguous cite identifies; see the miss-branch
+   *  comment in analyzeCitationsAndQuotes */
+    within_cluster?: boolean;
   };
 }
 
@@ -399,6 +425,26 @@ export function analyzeCitationsAndQuotes(
       c.page ?? ""
     );
     if (!res) {
+      // Out-of-corpus reporters (WL/Lexis): unresolvable BY CONSTRUCTION,
+      // not evidence of fabrication. Annotate, do not fail — the corpus
+      // will never carry these numbers (probe01: WL resolve rate 2.65%,
+      // 415 cites sampled). Every other unresolved cite still fails.
+      const rep = (c.reporter ?? "").trim().toUpperCase();
+      if (OUT_OF_CORPUS_REPORTERS.has(rep)) {
+        citations.push({
+          citation_text: c.text,
+          corrected: c.corrected,
+          volume: c.volume,
+          reporter: c.reporter,
+          page: c.page,
+          form: c.type,
+          cite_start: c.start,
+          cite_end: c.end,
+          status: "out_of_corpus",
+          pin_unverified: c.pin_cite != null,
+        });
+        continue;
+      }
       citations.push({
         citation_text: c.text,
         corrected: c.corrected,
@@ -437,6 +483,9 @@ export function analyzeCitationsAndQuotes(
       cluster_id: res.cluster_id,
       case_name: res.case_name,
       inferred_treatment: treatmentLabels(auth?.flags),
+      ...(res.all_cluster_ids && res.all_cluster_ids.length > 1
+        ? { ambiguous_cluster_ids: res.all_cluster_ids }
+        : {}),
     });
   }
 
@@ -538,11 +587,85 @@ export function analyzeCitationsAndQuotes(
       });
       continue;
     }
+    // Sibling-opinion verification (audit probe02 rerun 2026-09-21): the
+    // corpus's identity of "a case" is the CLUSTER (resolveCluster returns
+    // one; case names are per-cluster), so a real quote of the cited case
+    // can live in ANY of its opinions — a dissent, concurrence, or companion
+    // text — and in any cluster an AMBIGUOUS cite identifies (probe04: 7.2%
+    // of (vol, rep, page) groups collide). Verify with honest provenance
+    // (within_cluster) instead of striking real law; only a quote that
+    // exists NOWHERE in the clusters the cite identifies can be a
+    // wrong-case quote. The earlier "downgrade to quote_not_found" design
+    // still failed real quotes: probe02's positive controls carried
+    // quote_not_found|cite:ok ×12 after that fix.
+    const clusterIds = target.cluster_id != null
+      ? [...new Set([target.cluster_id, ...(target.ambiguous_cluster_ids ?? [])])]
+      : [];
+    let sibVerified = false;
+    if (target.statute_id == null && clusterIds.length > 0) {
+      const placeholders = clusterIds.map(() => "?").join(",");
+      const sibs = db
+        .prepare(
+          `SELECT id, cluster_id, case_name, text FROM opinions
+           WHERE cluster_id IN (${placeholders}) AND id != ? AND blocked = 0`
+        )
+        .all(...clusterIds, target.opinion_id) as Array<{
+        id: number;
+        cluster_id: number;
+        case_name: string | null;
+        text: string;
+      }>;
+      // Sibling candidates are the cluster's LIVE opinions: verification
+      // never silently relies on de-indexed (blocked) text — same contract
+      // as findTrueSource, which never names a blocked opinion.
+      for (const sib of sibs) {
+        const sm = findQuote(sib.text, span.quote);
+        if (!sm.found) continue;
+        quotes.push({
+          quote: span.quote,
+          start: span.start,
+          end: span.end,
+          status: "verified",
+          attributed_to_citation_index: idx,
+          matched_start: sm.start,
+          matched_end: sm.end,
+          true_source: {
+            case_name: sib.case_name ?? "case name unavailable",
+            cluster_id: sib.cluster_id,
+            opinion_id: sib.id,
+            within_cluster: true,
+          },
+        });
+        sibVerified = true;
+        break;
+      }
+    }
+    if (sibVerified) continue;
     // True-source probing is an opinion-text concern; a statute quote that
-    // does not match its section simply failed.
+    // does not match its section simply failed. What remains after the
+    // cluster search is a quote no live opinion of the cited cluster
+    // contains in clean form:
+    //   • the span exists in the cited cluster but only in vetoed form
+    //     (e.g. every occurrence negator-shed) → quote_not_found with
+    //     within_cluster provenance — the clean sentence is not the law
+    //     of this case, which is exactly what the user must hear;
+    //   • the corpus has the span in some OTHER case → quote_wrong_case
+    //     (fail with the true source shown);
+    //   • nowhere at all → plain quote_not_found.
     const source = target.statute_id != null
       ? undefined
-      : findTrueSource(db, span.quote, target.cluster_id ?? null);
+      : findTrueSource(db, span.quote, null);
+    if (source && clusterIds.includes(source.cluster_id)) {
+      quotes.push({
+        quote: span.quote,
+        start: span.start,
+        end: span.end,
+        status: "quote_not_found",
+        attributed_to_citation_index: idx,
+        true_source: { ...source, within_cluster: true },
+      });
+      continue;
+    }
     quotes.push({
       quote: span.quote,
       start: span.start,

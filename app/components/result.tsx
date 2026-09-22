@@ -106,13 +106,31 @@ function SentenceItem({ s }: { s: VerifiedSentence }) {
   );
 }
 
-function IracBlock({ label, text }: { label: string; text: string }) {
+function IracBlock({
+  label,
+  text,
+  verified,
+}: {
+  label: string;
+  text: string;
+  verified?: boolean;
+}) {
   return (
     <div className="ax-irac">
       <h4>
-        {label} <span className="ax-note">· analyst output, not sentence-verified</span>
+        {label}{" "}
+        <span className="ax-note">
+          {verified === undefined
+            ? "· analyst output, not sentence-verified"
+            : verified
+            ? "· verified — quotes checked"
+            : "· FAILED quote verification"}
+        </span>
       </h4>
-      <p>{text}</p>
+      <p className={verified === false ? "s-text-unverified" : undefined}>
+        {text}
+      </p>
+      {verified === false && <span className="ax-s-flag">UNVERIFIED</span>}
     </div>
   );
 }
@@ -177,6 +195,30 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
         <ExportDocxButton caseId={out.case_id} />
       </div>
 
+      {out.engines && out.engines.length > 0 && (
+        <div className="ax-card">
+          <h3>Engines (ADR-004)</h3>
+          <p className="ax-card-sub">
+            Which engine produced each stage. The verifier gates every engine
+            identically — it reads citations and quotes, not models.
+          </p>
+          <ul className="ax-appendix">
+            {out.engines.map((e) => (
+              <li key={e.stage}>
+                <span aria-hidden="true">◇</span>
+                <code>{e.stage}</code>
+                <span>
+                  <span className={`ax-chip ${e.engine === "cloud" ? "info" : "pass"}`}>
+                    {e.engine}
+                  </span>{" "}
+                  {e.model}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="ax-card">
         <div className="ax-banner" role="note">
           {out.drafted.banner}
@@ -205,14 +247,19 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
       <div className="ax-card">
         <h3>IRAC analysis</h3>
         <p className="ax-card-sub">
-          Analyst output — structured reasoning, not sentence-verified. Trust
-          the draft above for claims.
+          Structured analyst reasoning. Fields ride the verifier gate when the
+          pipeline tagged them — struck-through text failed quote verification.
         </p>
         <div className="ax-irac-grid">
-          <IracBlock label="Issue" text={out.irac.issue} />
-          <IracBlock label="Rule" text={out.irac.rule} />
-          <IracBlock label="Application" text={out.irac.application} />
-          <IracBlock label="Conclusion" text={out.irac.conclusion} />
+          {(["issue", "rule", "application", "conclusion"] as const).map((k) => {
+            const gated = out.drafted_irac_verified?.[k];
+            const label = k.charAt(0).toUpperCase() + k.slice(1);
+            return gated ? (
+              <IracBlock key={k} label={label} text={gated.text} verified={gated.verified} />
+            ) : (
+              <IracBlock key={k} label={label} text={out.irac?.[k] ?? ""} />
+            );
+          })}
         </div>
         <h4 className="ax-section-label">Element checklist</h4>
         <div style={{ overflow: "auto" }}>
@@ -276,7 +323,20 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
         <p className="ax-card-sub">
           Retrieved counter-argument, not invented. Read this before you file.
         </p>
-        <p className="ax-counter">{out.adversary.counter_argument}</p>
+        {out.drafted_counter_argument_verified ? (
+          <p
+            className={`ax-counter ${
+              out.drafted_counter_argument_verified.verified ? "" : "s-text-unverified"
+            }`}
+          >
+            {out.drafted_counter_argument_verified.text}
+            {!out.drafted_counter_argument_verified.verified && (
+              <span className="ax-s-flag"> — UNVERIFIED</span>
+            )}
+          </p>
+        ) : (
+          <p className="ax-counter">{out.adversary.counter_argument}</p>
+        )}
         {out.adversary.treatment_caveats.length > 0 && (
           <ul className="ax-caveats">
             {out.adversary.treatment_caveats.map((t, i) => (
@@ -319,6 +379,7 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
               <span>
                 {a.case_name ?? "—"}{" "}
                 {!a.verified && <span className="unres">unresolved</span>}
+                {a.ambiguous && <span className="unres"> · AMBIGUOUS</span>}
                 {a.inferred_treatment.length > 0 && (
                   <span className="unres">
                     {" "}
@@ -330,6 +391,35 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
           ))}
         </ul>
       </div>
+
+      {out.drafted.certificate && (
+        <div className="ax-card">
+          <h3>Verification certificate</h3>
+          <p className="ax-card-sub">{out.drafted.certificate.statement}</p>
+          <ul className="ax-appendix">
+            <li>
+              <span aria-hidden="true">№</span>
+              <code>{out.drafted.certificate.schema}</code>
+              <span>overall {out.drafted.certificate.overall.toUpperCase()}</span>
+            </li>
+            <li>
+              <span aria-hidden="true">#</span>
+              <code>SHA-256</code>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                {out.drafted.certificate.draft_sha256}
+              </span>
+            </li>
+            <li>
+              <span aria-hidden="true">⚓</span>
+              <code>audit anchor</code>
+              <span>
+                audit_log row {out.drafted.certificate.audit_row_id ?? "—"} · run{" "}
+                {out.drafted.certificate.run_id ?? "—"} (append-only, trigger-enforced)
+              </span>
+            </li>
+          </ul>
+        </div>
+      )}
 
       <details className="ax-details">
         <summary>

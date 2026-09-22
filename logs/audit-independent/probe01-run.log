@@ -1,0 +1,32 @@
+sampling opinions by random id draws (PK lookups only)...
+id space: 1..11349507
+sampled 1000 opinions across 23 decades
+  batch 1/25
+  batch 2/25
+  batch 3/25
+  batch 4/25
+  batch 5/25
+  batch 6/25
+  batch 7/25
+  batch 8/25
+  batch 9/25
+  batch 10/25
+  batch 11/25
+  batch 12/25
+  batch 13/25
+  batch 14/25
+  batch 15/25
+  batch 16/25
+  batch 17/25
+  batch 18/25
+  batch 19/25
+  batch 20/25
+  batch 21/25
+  batch 22/25
+  batch 23/25
+  batch 24/25
+  batch 25/25
+
+full citations checked: 13305
+resolved: 11898  unresolved: 1407  rate: 0.8943
+-> /home/Houssem/Desktop/projects/Better Call Alex/Better Call Alex/logs/audit-independent/probe01-resolution-ceiling.json

@@ -5,6 +5,12 @@ Canon: CLAUDE.md §3 "The Verifier". Implementation: `app/lib/verify/`
 `verifier/bridge.py`, fixtures `verifier/fixtures/golden.json`.
 Gate runner: `pnpm g2`. Unit tests: `pnpm test`.
 
+Independent re-derivation (2026-09-20, probe02, 150 real quotes + 20
+mechanical mutations through the production path): mutation catch 170/170
+after the cluster-wide attribution and negator-veto fixes landed; see
+`logs/audit-independent/` for the evidence and `docs/audit-independent.md`
+for method.
+
 ## Verdict: G2 gate MET (2026-08-24)
 
 **Fabrication catch rate: 10/10 adversarial fixtures = 100%.**
@@ -25,8 +31,12 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
            │     possessives/contractions never extract)
            ├──> attribute each quote (nearest preceding verified cite,
            │     else nearest following within 300 chars)
-           ├──> match quote vs cited opinion text (conservative ladder)
-           │     no match    -> quote_not_found              (§5.2)
+           ├──> match quote vs cited case's CLUSTER (independent audit
+           │     2026-09-20: 5 of 70 real-quote false strikes were quotes
+           │     living in a sibling opinion of the same cluster — lead vs
+           │     dissent — not the single resolved opinion text)
+           │     no match anywhere in the cluster
+           │                  -> quote_not_found             (§5.2)
            │     match elsewhere -> quote_wrong_case + best-effort
            │                          true source identification
            ├──> annotate: short/id/supra forms = unsupported_form;
@@ -37,6 +47,13 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
 overall = fail iff any citation unresolved OR any quote unverified.
 Unverifiable content is REPORTED, never dropped — struck-through
 rendering happens in G3's UI on top of this report.
+
+Out-of-corpus reporters (WL, Lexis) annotate `out_of_corpus` and do NOT
+fail the draft: probe01 (2026-09-20) measured the corpus resolution
+ceiling at 89.4% — real opinions' own WL cites resolve at 2.65% because
+the corpus cannot carry Westlaw numbers by construction. Everything else
+that fails to resolve still fails the draft (§5.1).
+
 Render gate (render.ts): a [LAW] sentence passes only with a pin cite
 that produced an extracted citation in its range — a pin the extractor
 saw nothing in (e.g. a bare number) fails closed, never vacuously.
@@ -50,6 +67,13 @@ saw nothing in (e.g. a bare number) fails closed, never vacuously.
 3. same, after expanding editorial brackets (`[t]he` → `the`);
 4. ellipsis fragments — all fragments present, in order, within a
    bounded window.
+5. negator veto — a match beginning immediately after a negator word
+   ("no|not|never|none|neither|nor|cannot" + space) is rejected when
+   the quote itself does not open with that negator. This catches the
+   dropped-negator mutation class ("No person shall…" quoted as
+   "person shall…"): a verbatim substring no textual ladder can see.
+   If the span also occurs somewhere clean in the source, that
+   occurrence verifies (the veto is per-occurrence).
 
 **No edit-distance fuzzing exists at any rung, by construction**: a quote
 altered by one word must fail, and a permanent fixture asserts exactly

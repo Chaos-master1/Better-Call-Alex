@@ -180,6 +180,150 @@ test(
   }
 );
 
+// ------------------- dropped-negator veto (audit probe02 2026-09-20)
+
+test(
+  "a quote that silently sheds its negator fails (dropped-negator veto)",
+  { skip: !HAS_DB },
+  async () => {
+    const { verifyText } = await import("./verify.js");
+    const db = openCorpus();
+    try {
+      // Find a real negated span and drop its negator — the exact mutation
+      // class that escaped every textual rung in audit probe02.
+      // Pick a cluster where EVERY occurrence of the phrase is negator-shed
+      // — if any sibling carries a clean occurrence, the quote legitimately
+      // verifies (per-occurrence veto semantics) and the fixture premise
+      // breaks (audit probe02 rerun exposed exactly that collision).
+      const probe = db
+        .prepare(
+          `SELECT o.id AS id, o.cluster_id AS cluster_id, o.text AS text
+             FROM opinions o
+            WHERE o.blocked = 0
+              AND o.id IN (SELECT rowid FROM opinions_fts
+                           WHERE opinions_fts MATCH '"no person shall be deprived"')
+              AND o.text LIKE '%no person shall be deprived%'
+              AND NOT EXISTS (
+                    SELECT 1 FROM opinions sib
+                     WHERE sib.cluster_id = o.cluster_id
+                       AND sib.blocked = 0
+                       AND sib.text LIKE '%person shall be deprived of life%'
+                       AND sib.text NOT LIKE '%no person shall be deprived of life%'
+                  )
+            LIMIT 1`
+        )
+        .get() as { id: number; cluster_id: number; text: string } | undefined;
+      assert.ok(probe, "corpus must contain an all-negated cluster for the span");
+      // Belt-and-suspenders: confirm in JS that NO live opinion of this
+      // cluster carries a clean occurrence (the SQL guard above covers
+      // others; this covers the probe opinion itself).
+      const sibs = db
+        .prepare(
+          `SELECT text FROM opinions WHERE cluster_id = ? AND blocked = 0`
+        )
+        .all(probe.cluster_id) as Array<{ text: string }>;
+      for (const sib of sibs) {
+        assert.ok(
+          !(sib.text.includes("person shall be deprived of life") &&
+            !sib.text.includes("no person shall be deprived of life")),
+          "fixture premise: no clean occurrence anywhere in the cluster"
+        );
+      }
+      const m = probe.text.match(/[Nn]o\s+(person shall be deprived of life)/);
+      assert.ok(m, "negator directly precedes the span");
+      const quote = m[1]; // negator dropped
+      const at = m.index! + m[0].indexOf(m[1]);
+      // Veto precondition: the source match is immediately preceded by "no ".
+      assert.ok(/no\s$/i.test(probe.text.slice(0, at)));
+
+      // Attribute to the source opinion's own primary citation — but the
+      // 7.2% (vol, rep, page) collision rate (probe04) means a cite can
+      // resolve to a DIFFERENT cluster that carries a clean occurrence.
+      // Choose a citation that provably resolves to the probed cluster,
+      // unambiguously, or the fixture premise is void.
+      const cites = db
+        .prepare(
+          `SELECT volume, reporter, page FROM citation_strings WHERE cluster_id = ?`
+        )
+        .all(probe.cluster_id) as Array<{ volume: string; reporter: string; page: string }>;
+      const { resolveCluster } = await import("../db.js");
+      let chosen: { volume: string; reporter: string; page: string } | undefined;
+      for (const c of cites) {
+        const res = resolveCluster(db, c.volume, c.reporter, c.page);
+        if (
+          res &&
+          res.cluster_id === probe.cluster_id &&
+          (res.all_cluster_ids?.length ?? 1) === 1
+        ) {
+          chosen = c;
+          break;
+        }
+      }
+      assert.ok(chosen, "cluster must carry an unambiguous self-resolving citation");
+      const cite = chosen;
+
+      const draft = `[LAW] The court said "${quote}" (${cite.volume} ${cite.reporter} ${cite.page}).`;
+      const r = verifyText(db, draft);
+      assert.equal(r.overall, "fail");
+      assert.equal(r.quotes[0].status, "quote_not_found");
+    } finally {
+      db.close();
+    }
+  }
+);
+
+// ------------------- sibling-opinion attribution (audit probe02 2026-09-20)
+
+test(
+  "a quote living in a SIBLING opinion of the cited cluster downgrades to quote_not_found, not wrong-case",
+  { skip: !HAS_DB },
+  async () => {
+    const { verifyText } = await import("./verify.js");
+    const db = openCorpus();
+    try {
+      // Find a real sibling pair: two opinions sharing a cluster, where a
+      // quoted sentence exists in one but not the other.
+      const pair = db
+        .prepare(
+          `SELECT a.id AS aid, a.text AS atext, b.id AS bid, b.text AS btext,
+                  a.cluster_id AS cid
+             FROM opinions a JOIN opinions b ON a.cluster_id = b.cluster_id
+            WHERE a.id < b.id AND a.blocked = 0 AND b.blocked = 0
+              AND a.text != b.text
+              AND length(a.text) > 2000 AND length(b.text) > 2000 LIMIT 1`
+        )
+        .get() as
+          | { aid: number; atext: string; bid: number; btext: string; cid: number }
+          | undefined;
+      assert.ok(pair, "corpus must contain sibling opinions");
+
+      // Extract a quoted span from A's text and cite B's primary citation.
+      const m = pair.atext.match(/[\u201c"]([^\u201c\u201d"]{40,320})[\u201d"]/);
+      assert.ok(m, "sibling A must contain a quoted span");
+      const q = m[1];
+      const bCite = db
+        .prepare(
+          `SELECT volume, reporter, page FROM citation_strings
+           WHERE cluster_id = ? ORDER BY CAST(volume AS INTEGER), page LIMIT 1`
+        )
+      .get(pair.cid) as { volume: string; reporter: string; page: string };
+      assert.ok(bCite);
+      const draft = `[LAW] The court said "${q}" (${bCite.volume} ${bCite.reporter} ${bCite.page}).`;
+      const r = verifyText(db, draft);
+      const qc = r.quotes[0];
+      assert.ok(qc);
+      // Real quote of the cited case, found in a sibling opinion: VERIFIED
+      // with honest provenance (audit probe02 rerun 2026-09-21) — the old
+      // downgrade-to-not_found design still false-struck real law.
+      assert.equal(qc.status, "verified");
+      assert.equal(qc.true_source?.within_cluster, true);
+      assert.ok(r.overall === "pass");
+    } finally {
+      db.close();
+    }
+  }
+);
+
 // -------------------------------------------------------------- resolver
 
 test("resolveCluster resolves Roe and rejects fabrications", { skip: !HAS_DB }, () => {

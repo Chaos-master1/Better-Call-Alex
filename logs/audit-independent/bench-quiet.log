@@ -1,0 +1,23 @@
+query                                          min med max (ms)
+qualified immunity clearly established         453 477 1811
+personal jurisdiction minimum contacts         635 2027 2817
+fourth amendment warrantless search vehicle    377 380 400
+negligence duty of care foreseeability         354 367 971
+confrontation clause testimonial hearsay       271 273 1716
+commerce clause substantial effects            450 454 455
+
+warm p50=454ms  warm p95=2817ms  n=18  budget=500ms
+cold first-touch: min=2961ms max=5313ms
+
+phase medians across all warm runs:
+  total_ms         med=   453.5ms  p95=  2816.6ms
+  fts_pool_ms      med=   437.5ms  p95=  2667.8ms
+  fetch_meta_ms    med=     9.6ms  p95=   415.3ms
+  paren_ms         med=    10.5ms  p95=    97.1ms
+  seeds_ms         med=     1.0ms  p95=    32.0ms
+  text_ms          med=     7.8ms  p95=    19.2ms
+  score_ms         med=     0.3ms  p95=     0.5ms
+  tokenize_ms      med=     0.0ms  p95=     0.1ms
+  prf_ms           med=     0.0ms  p95=     0.0ms
+  courts_ms        med=     0.0ms  p95=     0.0ms
+FAIL: warm p95 exceeds budget

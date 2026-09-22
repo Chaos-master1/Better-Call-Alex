@@ -169,16 +169,22 @@ function recoverStaleRuns(db: Database.Database): void {
 
 /** Append a row to audit_log. The only legal way to write to it.
  *  `caseId` scopes the row to a case so the UI shows per-case steps
- *  (audit_log has always been append-only; the column is additive). */
+ *  (audit_log has always been append-only; the column is additive).
+ *  Returns the row id — the verification certificate uses it as its
+ *  tamper-evident anchor (audit_log is append-only by trigger). */
 export function audit(
   db: Database.Database,
   kind: string,
   payload: unknown,
   caseId?: number
-): void {
-  db.prepare(
-    "INSERT INTO audit_log (kind, payload, case_id) VALUES (?, ?, ?)"
-  ).run(kind, JSON.stringify(payload) ?? null, caseId ?? null);
+): number {
+  return Number(
+    db
+      .prepare(
+        "INSERT INTO audit_log (kind, payload, case_id) VALUES (?, ?, ?)"
+      )
+      .run(kind, JSON.stringify(payload) ?? null, caseId ?? null).lastInsertRowid
+  );
 }
 
 export type AppDb = Database.Database;

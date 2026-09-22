@@ -3,7 +3,11 @@
  * (CLAUDE.md §8 G1). Two-phase pattern mandatory per docs/g0-audit.md.
  */
 import { openCorpus } from "../app/lib/db.js";
-import { search } from "../app/lib/retrieval/search.js";
+import {
+  search,
+  newTimings,
+  type SearchTimings,
+} from "../app/lib/retrieval/search.js";
 
 const QUERIES = [
   "qualified immunity clearly established",
@@ -25,8 +29,9 @@ function main() {
     );
     const all: number[] = [];
     const colds: number[] = [];
+    const phaseAgg: Record<string, number[]> = {};
     let invariantFailures = 0;
-    console.log("query".padEnd(46), "min", "med", "max (ms)");
+  console.log("query".padEnd(46), "min", "med", "max (ms)");
     for (const q of QUERIES) {
       // one unmeasured warmup: we gate steady-state service latency;
       // first-ever-touch cost (page-cache misses on a 197 GB file) is
@@ -36,9 +41,13 @@ function main() {
       colds.push(performance.now() - t0);
       const times: number[] = [];
       for (let i = 0; i < RUNS; i++) {
+        const tim = newTimings();
         const s0 = performance.now();
-        const hits = search(db, q);
+        const hits = search(db, q, { timings: tim });
         times.push(performance.now() - s0);
+        for (const [k, v] of Object.entries(tim)) {
+          (phaseAgg[k] ??= []).push(v as number);
+        }
         if (hits.length === 0) console.error(`  !! empty result: ${q}`);
       }
       // §9.7 standing invariant: a de-indexed opinion must never surface.
@@ -65,6 +74,17 @@ function main() {
       `warm p95=${Math.round(p95)}ms  n=${all.length}  budget=${P95_BUDGET_MS}ms\n` +
       `cold first-touch: min=${Math.round(colds[0])}ms max=${Math.round(colds[colds.length - 1])}ms`
     );
+    // Per-phase medians (audit 2026-09-20): the tail must be attributable.
+    console.log("\nphase medians across all warm runs:");
+    const phaseRows = Object.entries(phaseAgg)
+      .map(([k, v]) => {
+        v.sort((a, b) => a - b);
+        return { k, med: v[Math.floor(v.length / 2)], p95: v[Math.floor(v.length * 0.95)] };
+      })
+      .sort((a, b) => b.p95 - a.p95);
+    for (const r of phaseRows) {
+      console.log(`  ${r.k.padEnd(16)} med=${r.med.toFixed(1).padStart(8)}ms  p95=${r.p95.toFixed(1).padStart(8)}ms`);
+    }
     if (invariantFailures > 0) {
       console.error(`FAIL: ${invariantFailures} blocked-opinion invariant violation(s)`);
       process.exit(1);

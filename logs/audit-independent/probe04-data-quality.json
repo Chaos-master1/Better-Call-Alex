@@ -1,0 +1,60 @@
+{
+  "probe": "phase0.4 corpus data-quality sampling",
+  "date": "2026-09-20",
+  "seed": 20260920,
+  "text_quality": {
+    "sampled": 400,
+    "garbage_rate_overall": 0.0,
+    "garbage_rate_ocr": 0.0,
+    "garbage_rate_non_ocr": 0.0,
+    "ocr_share_of_sample": 0.4525,
+    "note": "garbage = printable_ratio<0.85 or avg_word_len>9.5 \u2014 the OCR down-weight (\u00a79.6) exists for these"
+  },
+  "cites_anchors": {
+    "population": 167157950,
+    "checked": 400,
+    "coherent_rate": 0.025,
+    "bad_examples": [
+      "l rather than constructive delivery * * * into the official custody and control\u201d of the relevant official. Fulton v. State ex rel. Gen. Motors Corp., \u2026 , 200 N.",
+      "be commercial in nature. In Cassirer v. Kingdom of Spain , an American citizen filed suit to recover a painting from Spain, which claimed ownership. \u2026 , 1022 (9",
+      "arlier proceedings, the denial of Dayan\u2019s motion to change venue was proper. We agree with McDonald\u2019s and find that In re Marriage of Kozloff (1984), \u2026 , 463 N.",
+      "nably believes could be used in a crimihal prosecution or could lead to other evidence that might be so used.\u201d Kastigar v. U.S., 406 U.S. 441, 445 , 9 \u2026 , 32 L.",
+      "ered sound [appellate] *394 strategy.\u2019 \u201d United States ex rel. Roche v. Scully, 739 F.2d 739, 742 (2d Cir. 1984), quoting Strickland v. Washington, su \u2026 \u2018[a] fa",
+      "2752 ; Terry, 392 U.S. at 7 , 88 S.Ct. 1868 (all describing the reasonable suspicion standard). 49 . Carroll v. United States, 267 U.S. 132, 149 , 45 \u2026 69 L.Ed.",
+      "of the trial. The Court of Appeals condemned proof of an injury likely to happen, as speculative and visionary. (Strohm v. N. Y. and Erie R. R. Co., \u2026 .) In thi",
+      "e petition stated a cause of action for deceit, it is proper to charge the jury on the law of punitive damages (Aderhold v. Zimmer, 86 Ga. App. 204 , \u2026 ), since",
+      "8 F.Supp. 864, 876 (D.Kan.1995) (citing Unified School Dist. No. 503 v. McKinney, 236 Kan. 224, 234-35 , 689 P.2d 860 (1984)); State v. Russell, 227 K \u2026 0 P.2d ",
+      "garding whether the defendant has 'fair and just' reasons for withdrawal will be upheld unless they are clearly erroneous.\" United States v. Messino, \u2026 (7th Cir"
+    ]
+  },
+  "citation_collisions": {
+    "vrp_groups": 15045616,
+    "colliding_groups": 1088200,
+    "collision_rate": 0.072327,
+    "examples": [
+      "0 La.App. 5 Cir. 344 -> 2 clusters",
+      "0 P. 000 -> 5 clusters",
+      "1 A. 113 -> 2 clusters",
+      "1 A. 392 -> 2 clusters",
+      "1 A. 665 -> 2 clusters",
+      "1 A. 727 -> 2 clusters",
+      "1 A.2d 105 -> 2 clusters",
+      "1 A.2d 274 -> 2 clusters",
+      "1 A.2d 321 -> 2 clusters",
+      "1 A.2d 322 -> 2 clusters",
+      "1 A.2d 331 -> 3 clusters",
+      "1 A.2d 332 -> 3 clusters",
+      "1 A.2d 35 -> 2 clusters",
+      "1 A.2d 371 -> 3 clusters",
+      "1 A.2d 376 -> 2 clusters"
+    ]
+  },
+  "blocked": {
+    "count": 838152,
+    "share": 0.077619
+  },
+  "parenthetical_linkage": {
+    "sampled": 300,
+    "dangling": 0
+  }
+}

@@ -1,0 +1,333 @@
+{
+  "probe": "phase0.1 citation-resolution ceiling",
+  "date": "2026-09-20",
+  "seed": 20260920,
+  "sampled_opinions": 1000,
+  "opinions_with_full_cites": 906,
+  "full_citations_total": 13305,
+  "resolved": 11898,
+  "unresolved": 1407,
+  "resolve_rate": 0.8943,
+  "nonfull_citations_seen": 0,
+  "by_reporter": {
+    "U.S.": {
+      "resolved": 1151,
+      "total": 1196,
+      "rate": 0.9624
+    },
+    "F.2d": {
+      "resolved": 972,
+      "total": 984,
+      "rate": 0.9878
+    },
+    "F.3d": {
+      "resolved": 896,
+      "total": 907,
+      "rate": 0.9879
+    },
+    "S. Ct.": {
+      "resolved": 837,
+      "total": 852,
+      "rate": 0.9824
+    },
+    "L. Ed. 2d": {
+      "resolved": 497,
+      "total": 540,
+      "rate": 0.9204
+    },
+    "P.2d": {
+      "resolved": 504,
+      "total": 507,
+      "rate": 0.9941
+    },
+    "S.W.2d": {
+      "resolved": 429,
+      "total": 434,
+      "rate": 0.9885
+    },
+    "WL": {
+      "resolved": 11,
+      "total": 415,
+      "rate": 0.0265
+    },
+    "A.2d": {
+      "resolved": 316,
+      "total": 326,
+      "rate": 0.9693
+    },
+    "So. 2d": {
+      "resolved": 308,
+      "total": 313,
+      "rate": 0.984
+    },
+    "N.E.2d": {
+      "resolved": 248,
+      "total": 262,
+      "rate": 0.9466
+    },
+    "L. Ed.": {
+      "resolved": 217,
+      "total": 231,
+      "rate": 0.9394
+    },
+    "S.E.2d": {
+      "resolved": 217,
+      "total": 220,
+      "rate": 0.9864
+    },
+    "S.W.3d": {
+      "resolved": 187,
+      "total": 191,
+      "rate": 0.9791
+    },
+    "F. Supp.": {
+      "resolved": 174,
+      "total": 176,
+      "rate": 0.9886
+    },
+    "N.W.2d": {
+      "resolved": 165,
+      "total": 168,
+      "rate": 0.9821
+    },
+    "P.": {
+      "resolved": 127,
+      "total": 153,
+      "rate": 0.8301
+    },
+    "Ga.": {
+      "resolved": 133,
+      "total": 138,
+      "rate": 0.9638
+    },
+    "N.Y.2d": {
+      "resolved": 117,
+      "total": 135,
+      "rate": 0.8667
+    },
+    "Pa.": {
+      "resolved": 122,
+      "total": 129,
+      "rate": 0.9457
+    },
+    "Mich.": {
+      "resolved": 122,
+      "total": 126,
+      "rate": 0.9683
+    },
+    "N.Y.": {
+      "resolved": 99,
+      "total": 115,
+      "rate": 0.8609
+    },
+    "So.": {
+      "resolved": 77,
+      "total": 112,
+      "rate": 0.6875
+    },
+    "Mass.": {
+      "resolved": 100,
+      "total": 108,
+      "rate": 0.9259
+    },
+    "S.W.": {
+      "resolved": 85,
+      "total": 100,
+      "rate": 0.85
+    }
+  },
+  "by_decade": {
+    "1800": {
+      "resolved": 5,
+      "total": 8,
+      "rate": 0.625
+    },
+    "1810": {
+      "resolved": 1,
+      "total": 2,
+      "rate": 0.5
+    },
+    "1830": {
+      "resolved": 1,
+      "total": 9,
+      "rate": 0.1111
+    },
+    "1840": {
+      "resolved": 4,
+      "total": 7,
+      "rate": 0.5714
+    },
+    "1850": {
+      "resolved": 4,
+      "total": 5,
+      "rate": 0.8
+    },
+    "1860": {
+      "resolved": 3,
+      "total": 11,
+      "rate": 0.2727
+    },
+    "1870": {
+      "resolved": 53,
+      "total": 103,
+      "rate": 0.5146
+    },
+    "1880": {
+      "resolved": 56,
+      "total": 65,
+      "rate": 0.8615
+    },
+    "1890": {
+      "resolved": 150,
+      "total": 181,
+      "rate": 0.8287
+    },
+    "1900": {
+      "resolved": 211,
+      "total": 252,
+      "rate": 0.8373
+    },
+    "1910": {
+      "resolved": 177,
+      "total": 220,
+      "rate": 0.8045
+    },
+    "1920": {
+      "resolved": 293,
+      "total": 337,
+      "rate": 0.8694
+    },
+    "1930": {
+      "resolved": 466,
+      "total": 518,
+      "rate": 0.8996
+    },
+    "1940": {
+      "resolved": 358,
+      "total": 388,
+      "rate": 0.9227
+    },
+    "1950": {
+      "resolved": 466,
+      "total": 515,
+      "rate": 0.9049
+    },
+    "1960": {
+      "resolved": 669,
+      "total": 713,
+      "rate": 0.9383
+    },
+    "1970": {
+      "resolved": 1176,
+      "total": 1215,
+      "rate": 0.9679
+    },
+    "1980": {
+      "resolved": 1529,
+      "total": 1616,
+      "rate": 0.9462
+    },
+    "1990": {
+      "resolved": 1844,
+      "total": 1949,
+      "rate": 0.9461
+    },
+    "2000": {
+      "resolved": 1547,
+      "total": 1653,
+      "rate": 0.9359
+    },
+    "2010": {
+      "resolved": 1543,
+      "total": 1701,
+      "rate": 0.9071
+    },
+    "2020": {
+      "resolved": 1342,
+      "total": 1837,
+      "rate": 0.7305
+    }
+  },
+  "top_unresolved_pairs": {
+    "2020 WL": {
+      "count": 40,
+      "example": "2020 WL 4673834"
+    },
+    "2021 WL": {
+      "count": 29,
+      "example": "2021 WL 5918556"
+    },
+    "2015 WL": {
+      "count": 29,
+      "example": "2015 WL 4243374"
+    },
+    "2025 WL": {
+      "count": 23,
+      "example": "2025 WL 2263443"
+    },
+    "2019 WL": {
+      "count": 22,
+      "example": "2019 WL 1338518"
+    },
+    "2014 WL": {
+      "count": 20,
+      "example": "2014 WL 1903904"
+    },
+    "2024 WL": {
+      "count": 19,
+      "example": "2024 WL 129964"
+    },
+    "2016 WL": {
+      "count": 19,
+      "example": "2016 WL 7508843"
+    },
+    "2022 WL": {
+      "count": 19,
+      "example": "2022 WL 4395728"
+    },
+    "2018 WL": {
+      "count": 16,
+      "example": "2018 WL 6573471"
+    },
+    "2023 WL": {
+      "count": 15,
+      "example": "2023 WL 3145312"
+    },
+    "2005 WL": {
+      "count": 13,
+      "example": "2005 WL 1668365"
+    },
+    "1996 WL": {
+      "count": 13,
+      "example": "1996 WL 374188"
+    },
+    "2017 WL": {
+      "count": 12,
+      "example": "2017 WL 1944197"
+    },
+    "2010 WL": {
+      "count": 11,
+      "example": "2010 WL 5276991"
+    },
+    "2012 U.S. Dist. LEXIS": {
+      "count": 10,
+      "example": "2012 U.S. Dist. LEXIS 80015"
+    },
+    "2007 WL": {
+      "count": 9,
+      "example": "2007 WL 1592968"
+    },
+    "2013 WL": {
+      "count": 8,
+      "example": "2013 WL 5440802"
+    },
+    "2022 NY Slip Op": {
+      "count": 7,
+      "example": "2022 NY Slip Op 01372"
+    },
+    "2004 WL": {
+      "count": 7,
+      "example": "2004 WL 1047982"
+    }
+  }
+}
