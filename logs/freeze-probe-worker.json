@@ -1,0 +1,29 @@
+{
+  "probe": "phase-c-worker-freeze-ab",
+  "date": "2026-09-23",
+  "claim": "Moving the G2 verifier analysis into a worker thread removes caller-thread stalls from synchronous SQLite work (bm25 scans, multi-MB blob reads) over the 239 GB corpus.",
+  "method": "Caller thread samples its own event-loop lag every 100ms (setImmediate delta) while verifyTextAsync runs a CiteGuard-style stress text: one real Roe full cite followed by six invented quotes, each forcing true-source probing (fresh bm25 phrase scans + multi-MB opinion normalizations). Worker mode = production default; in-thread mode = ALEX_VERIFY_WORKER=off (the pre-worker path, run second so the OS cache is warm — favorable to the old path).",
+  "results": {
+    "in_thread": {
+      "runs": 2,
+      "max_lag_ms": 12628,
+      "second_run_max_lag_ms_warm_cache": 3566,
+      "stalled_samples_gt_200ms": 1,
+      "wall_ms": [88898, 56657]
+    },
+    "worker": {
+      "runs": 2,
+      "max_lag_ms": 0,
+      "avg_lag_ms": 0,
+      "stalled_samples_gt_200ms": 0,
+      "wall_ms": [87521, 86889]
+    }
+  },
+  "verdict_equality": {
+    "stress_text": { "overall": "fail", "citations": 1, "quotes": { "quote_not_found": 3 } },
+    "honest_text": { "overall": "fail", "cites": ["410 U.S. 113→verified", "410 U.S. at 150→verified/pin_in_range"], "quotes": ["quote_not_found"] },
+    "note": "byte-identical verdicts across worker and in-thread paths; the honest-text quote_not_found is the known toy-probe artifact (hand-typed span), not a verifier regression"
+  },
+  "worker_contract": "verifyTextAsync uses the worker ONLY when the caller's handle is the real corpus file (SQLite pragma database_list vs CORPUS_PATH); test fixtures on :memory: keep the in-thread cooperative drain, so tests are byte-identical by construction. The worker is unref'd while idle and re-ref'd only for in-flight requests — processes that touch the async path (tests, CLIs, evals) exit cleanly when their own work is done (the first cut held a ref'd thread forever and hung process exit; found by the suite, fixed, re-proven). Worker crash or missing corpus degrades to the in-thread path with a logged error — the server still answers.",
+  "conclusion": "Worst caller-thread stall 12.6s (cold) / 3.6s (warm) → 0 ms measured across 873 samples; the residual Phase A '≤2s statement floor' is eliminated for the server thread. Total wall time is unchanged (the work still happens, off-thread). Post-fix gates: full suite 193 tests / 191 pass / 0 fail / 2 design-skips + G2 10/10, with the worker live."
+}
