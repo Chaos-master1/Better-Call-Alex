@@ -503,3 +503,41 @@ test("supra with no name metadata falls back to unsupported_form", () => {
     db.close();
   }
 });
+
+test("bare § tokenizer artifacts are skipped, real statutory cites ride untouched", () => {
+  const db = memoryCorpus();
+  try {
+    const sections: BridgeCitation[] = ["§", "§ ", " §"].map((t, i) => ({
+      text: t,
+      corrected: t,
+      volume: null,
+      reporter: null,
+      page: null,
+      type: "unknown",
+      pin_cite: null,
+      start: i * 4,
+      end: i * 4 + t.length,
+    }));
+    const real: BridgeCitation = {
+      text: "42 U.S.C. § 1983",
+      corrected: "42 U.S.C. § 1983",
+      volume: null,
+      reporter: "U.S.C.",
+      page: "1983",
+      type: "unknown",
+      pin_cite: null,
+      start: 40,
+      end: 56,
+    };
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [...sections, real],
+      "§ § § and 42 U.S.C. § 1983 claim"
+    );
+    const reported = report.citations.map((c) => c.citation_text);
+    assert.ok(!reported.includes("§"), "bare § must not appear as a citation");
+    assert.equal(reported.filter((t) => t === "42 U.S.C. § 1983").length, 1);
+  } finally {
+    db.close();
+  }
+});

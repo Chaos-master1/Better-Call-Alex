@@ -503,6 +503,16 @@ export function* analyzeCitationsAndQuotesGen(
   const statuteHits = hasStatutes ? parseStatuteCites(text) : [];
   const overlapsStatute = (start: number, end: number): boolean =>
     statuteHits.some((s) => start < s.end && end > s.start);
+  // Extraction noise (live A/B draft, 2026-09-23): eyecite's UnknownCitation
+  // regex surfaces BARE section symbols — "§" with no title, section, or any
+  // other content — as citations. They carry no citation semantics, flood
+  // resolution denominators (12 of 20 cites in one real draft), and render
+  // as meaningless rows. A bare symbol is a tokenizer artifact, not an
+  // unverifiable cite; real statutory cites ("42 U.S.C. § 1983") carry
+  // content and ride the G4 statute path untouched.
+  const isBareSectionArtifact = (c: BridgeCitation): boolean =>
+    c.type === "unknown" && /^[\s§]*$/.test(c.text);
+
   // Nearest preceding RESOLVED full citation — the antecedent that gives
   // short/Id./supra forms their referent under chain semantics.
   let lastFull: CitationCheck | undefined;
@@ -552,6 +562,9 @@ export function* analyzeCitationsAndQuotesGen(
     // A span inside a full statutory cite is superseded by the statute
     // check below — reporting both would double-fail the same reference.
     if (overlapsStatute(c.start, c.end)) continue;
+    // Bare-§ tokenizer artifacts are noise, not citations — skip entirely
+    // (they are not reported, because there is nothing to verify).
+    if (isBareSectionArtifact(c)) continue;
     // Spans ride ON the check object: parallel-array indexing against the
     // input would silently desync.
     if (c.type !== "full") {
