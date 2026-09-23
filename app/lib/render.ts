@@ -221,11 +221,28 @@ function crossReference(
       );
       verified = false;
     }
+    // Provenance backfill (g3 live run 2026-09-23): the model verified an
+    // inline cite but dropped the structured pin_cite field. The checked
+    // extraction IS the provenance — copy it into the field so UI/DOCX pin
+    // columns and the harness's field rule see the truth. Sourced ONLY from
+    // a uniquely resolved citation, never from the model or a guess.
+    let pinCite = s.pin_cite;
+    if (
+      s.tag === "LAW" &&
+      !pinCite &&
+      cits.some((c) => c.status === "verified")
+    ) {
+      const src = cits.find((c) => c.status === "verified" && c.form === "full") ??
+        cits.find((c) => c.status === "verified")!;
+      pinCite = src.cite_pin_raw
+        ? `${src.citation_text}, ${src.cite_pin_raw}`
+        : src.citation_text;
+    }
     return {
       index: i,
       tag: s.tag,
       text: s.text,
-      pin_cite: s.pin_cite,
+      pin_cite: pinCite,
       verified,
       detail,
       inferred: s.tag === "INFERRED",

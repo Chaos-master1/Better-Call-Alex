@@ -63,7 +63,14 @@ export interface CitationCheck {
   /** char offsets of the citation inside the verified draft text */
   cite_start: number;
   cite_end: number;
-  status: "verified" | "unresolved_citation" | "unsupported_form" | "out_of_corpus";
+  status:
+    | "verified"
+    | "unresolved_citation"
+    | "unsupported_form"
+    | "out_of_corpus"
+    /** the statute's code/title is not loaded in this corpus at all — the
+        cite may be perfectly valid, the corpus just cannot judge it */
+    | "statute_not_loaded";
   pin_unverified: boolean;
   /** Rung 3 (star-page anchors): the pin's page falls INSIDE the cited
    *  opinion's anchored page span. Present only when the resolved opinion
@@ -540,6 +547,11 @@ export function* analyzeCitationsAndQuotesGen(
   // eyecite-only behavior applies unchanged.
   const hasStatutes = statuteTableExists(db);
   const statuteHits = hasStatutes ? parseStatuteCites(text) : [];
+  // Title-existence probe for the statute_not_loaded split (indexed by the
+  // UNIQUE(source,title,…) key — O(1), never a scan).
+  const statuteTitleStmt = hasStatutes
+    ? db.prepare("SELECT 1 FROM statutes WHERE source = ? AND title = ? LIMIT 1")
+    : null;
   const overlapsStatute = (start: number, end: number): boolean =>
     statuteHits.some((s) => start < s.end && end > s.start);
   // Extraction noise (live A/B draft, 2026-09-23): eyecite's UnknownCitation
@@ -770,6 +782,15 @@ export function* analyzeCitationsAndQuotesGen(
     // A subsection pin ("§ 1983(a)") rides after the cite; like case pin
     // pages it is annotated, not verified (v1).
     const pinFollows = /^\s*\(/.test(text.slice(s.end));
+    // Distinguish a wrong cite from a data gap: if the title exists but the
+    // section doesn't, the miss is the cite; if the whole title is absent
+    // (this corpus loads eCFR only, no US Code), the corpus cannot judge
+    // the cite and says so instead of implying the cite is wrong.
+    const titleLoaded = row
+      ? true
+      : statuteTitleStmt
+        ? statuteTitleStmt.get(s.source, s.title) != null
+        : false;
     citations.push({
       citation_text: s.text,
       corrected: s.text,
@@ -779,7 +800,7 @@ export function* analyzeCitationsAndQuotesGen(
       form: "statute",
       cite_start: s.start,
       cite_end: s.end,
-      status: row ? "verified" : "unresolved_citation",
+      status: row ? "verified" : titleLoaded ? "unresolved_citation" : "statute_not_loaded",
       pin_unverified: pinFollows,
       ...(row ? { statute_id: row.id, case_name: `${statuteLabel(row)} — ${row.heading}` } : {}),
     });

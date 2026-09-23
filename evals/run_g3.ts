@@ -19,16 +19,22 @@
  *   pnpm exec tsx evals/run_g3.ts --offline   # deterministic-only
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { openApp } from "../app/lib/app_db.js";
+import { openAppAt } from "../app/lib/app_db.js";
 import { runCase } from "../app/lib/agents/run.js";
 import { currentModel } from "../app/lib/llm.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 const OUT = path.join(REPO, "logs", "g3-report.json");
+// Verified-rate ratchet: the last accepted live run's rate is the floor. A
+// regression beyond the tolerance fails the gate; a better rate ratchets the
+// baseline up. Structural gates stay as-is — this tracks the product metric
+// (how much of a draft survives verification) without gate-creep on noise.
+const BASELINE = path.join(REPO, "evals", "g3-baseline.json");
+const RATE_TOLERANCE = 0.05;
 
 const OFFLINE = process.argv.includes("--offline");
 // Model-bound budget: historical runs on 12 GB host are 4–8 min per pattern
@@ -48,7 +54,12 @@ interface Pattern {
 
 async function main() {
   const spec = JSON.parse(readFileSync(PATTERNS, "utf-8")) as { patterns: Pattern[] };
-  const app = openApp();
+  // Scratch app DB — a 6-pattern live run wrote runs/cases/messages rows into
+  // production data/app.sqlite on 2026-09-23 before this was a scratch file
+  // (the canary and redaction harnesses already worked this way).
+  const scratchPath = path.join(REPO, "data", "app-g3-scratch.sqlite");
+  try { rmSync(scratchPath); } catch { /* first run */ }
+  const app = openAppAt(scratchPath);
   const results: any[] = [];
   let allPass = true;
 
@@ -175,13 +186,39 @@ async function main() {
     const skipped = results.filter((r) =>
       String(r.status ?? "").startsWith("skipped")
     ).length;
+    const live = results.filter(
+      (r) => typeof r.verified === "number" && typeof r.total === "number" && r.total > 0
+    );
+    const verifiedSum = live.reduce((n, r) => n + r.verified, 0);
+    const totalSum = live.reduce((n, r) => n + r.total, 0);
+    const verifiedRate = totalSum > 0 ? verifiedSum / totalSum : null;
+    let baseline: { rate: number; generated_at: string } | null = null;
+    try {
+      baseline = JSON.parse(readFileSync(BASELINE, "utf-8"));
+    } catch {
+      /* first live run establishes the floor */
+    }
+    const regression =
+      verifiedRate != null && baseline != null && verifiedRate < baseline.rate - RATE_TOLERANCE;
     const report = {
       generated_at: new Date().toISOString(),
       offline: OFFLINE,
       patterns: spec.patterns.length,
       results,
+      gate: {
+        verified_rate: verifiedRate,
+        baseline_rate: baseline?.rate ?? null,
+        tolerance: RATE_TOLERANCE,
+        regression,
+      },
       overall: allPass ? "pass" : "fail",
     };
+    if (regression) {
+      allPass = false;
+      console.error(
+        `  ! verified-rate regression: ${(verifiedRate! * 100).toFixed(1)}% vs baseline ${(baseline!.rate * 100).toFixed(1)}% (tolerance ${(RATE_TOLERANCE * 100).toFixed(0)}pt) — gate fail`
+      );
+    }
     // Evidence guard: logs/g3-report.json is committed live-pass evidence.
     // An --offline run or a run with model-missing skips proves nothing about
     // the live pipeline, so it must never overwrite that file (it once did).
@@ -200,8 +237,23 @@ async function main() {
     }
     if (!allPass) process.exit(1);
     console.log(`G3 GATE: PASS — ${spec.patterns.length} patterns gated (or skipped offline) correctly`);
+    // Ratchet up only, and only from accepted live runs.
+    if (
+      outPath === OUT &&
+      verifiedRate != null &&
+      (baseline == null || verifiedRate > baseline.rate)
+    ) {
+      writeFileSync(
+        BASELINE,
+        JSON.stringify({ rate: verifiedRate, generated_at: report.generated_at }, null, 2) + "\n"
+      );
+      console.log(
+        `  baseline ratcheted: ${(verifiedRate! * 100).toFixed(1)}% verified rate is the new floor`
+      );
+    }
   } finally {
     app.close();
+    try { rmSync(scratchPath); } catch { /* keep tree clean */ }
   }
 }
 

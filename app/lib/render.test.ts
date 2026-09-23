@@ -168,6 +168,43 @@ test("a pin inside the span keeps the sentence verified", () => {
   }
 });
 
+test("verified inline cite backfills a dropped pin_cite field (provenance, not guess)", () => {
+  // g3 live run 2026-09-23 (tarasoff): the model verified an inline cite
+  // but omitted the structured field — the harness rightly flagged it.
+  // Render must copy the CHECKED extraction into the field.
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here. (410 U.S. 113)",
+        // no pin_cite field — the model dropped it
+      },
+    ]);
+    assert.equal(sentences[0].verified, true);
+    assert.equal(sentences[0].pin_cite, "410 U.S. 113");
+  } finally {
+    db.close();
+  }
+});
+
+test("an unresolved inline cite never backfills the pin field", () => {
+  // A fabricated cite stays honest: no field, sentence struck.
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "Completely invented authority. (999 U.S. 999)",
+      },
+    ]);
+    assert.equal(sentences[0].verified, false);
+    assert.equal(sentences[0].pin_cite, undefined);
+  } finally {
+    db.close();
+  }
+});
+
 test("too-short RECORD cannot be judged and is kept", () => {
   const { sentences, retagged } = confineRecordSentences(
     [{ tag: "RECORD", text: "He objected." }],

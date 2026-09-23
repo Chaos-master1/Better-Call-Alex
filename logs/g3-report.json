@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-23T12:23:32.777Z",
+  "generated_at": "2026-09-23T16:01:46.330Z",
   "offline": false,
   "patterns": 6,
   "results": [
     {
       "id": "g3-01-motel-1983",
       "status": "pass",
-      "ms": 260023,
+      "ms": 400234,
       "overall": "fail",
-      "verified": 6,
-      "total": 14,
+      "verified": 8,
+      "total": 17,
       "adversary_hits": 5,
       "research_hits": 24,
       "model": "local:qwen3.5:9b",
@@ -18,10 +18,10 @@
     {
       "id": "g3-02-terry-stop",
       "status": "pass",
-      "ms": 255604,
+      "ms": 430859,
       "overall": "fail",
-      "verified": 13,
-      "total": 21,
+      "verified": 15,
+      "total": 23,
       "adversary_hits": 5,
       "research_hits": 17,
       "model": "local:qwen3.5:9b",
@@ -30,10 +30,10 @@
     {
       "id": "g3-03-tarasoff",
       "status": "pass",
-      "ms": 247409,
+      "ms": 388051,
       "overall": "fail",
-      "verified": 8,
-      "total": 17,
+      "verified": 16,
+      "total": 22,
       "adversary_hits": 5,
       "research_hits": 13,
       "model": "local:qwen3.5:9b",
@@ -42,10 +42,10 @@
     {
       "id": "g3-04-personal-jurisdiction",
       "status": "pass",
-      "ms": 265602,
+      "ms": 1660707,
       "overall": "fail",
-      "verified": 15,
-      "total": 19,
+      "verified": 13,
+      "total": 24,
       "adversary_hits": 5,
       "research_hits": 9,
       "model": "local:qwen3.5:9b",
@@ -54,9 +54,9 @@
     {
       "id": "g3-05-regulatory-taking",
       "status": "pass",
-      "ms": 288669,
+      "ms": 329963,
       "overall": "fail",
-      "verified": 11,
+      "verified": 14,
       "total": 15,
       "adversary_hits": 5,
       "research_hits": 24,
@@ -66,7 +66,7 @@
     {
       "id": "g3-06-chain-cites",
       "status": "pass",
-      "ms": 289345,
+      "ms": 387341,
       "overall": "fail",
       "verified": 17,
       "total": 20,
@@ -76,5 +76,11 @@
       "issues": []
     }
   ],
+  "gate": {
+    "verified_rate": 0.6859504132231405,
+    "baseline_rate": 0.660377358490566,
+    "tolerance": 0.05,
+    "regression": false
+  },
   "overall": "pass"
 }

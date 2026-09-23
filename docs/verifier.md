@@ -50,7 +50,11 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
 
 overall = fail iff any citation unresolved OR any quote unverified.
 Unverifiable content is REPORTED, never dropped — struck-through
-rendering happens in G3's UI on top of this report.
+rendering happens in G3's UI on top of this report. A statute from an
+title the corpus does not carry (the shipped corpus has eCFR only, no
+US Code) is `statute_not_loaded`: unjudgeable, so it strikes the
+sentence without failing the draft — a wrong section under a loaded
+title stays `unresolved_citation` and fails.
 
 Out-of-corpus reporters (WL, Lexis) annotate `out_of_corpus` and do NOT
 fail the draft: probe01 (2026-09-20) measured the corpus resolution

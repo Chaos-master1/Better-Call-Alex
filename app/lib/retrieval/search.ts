@@ -29,6 +29,13 @@ export interface SearchHit {
   };
   treatment_flags: number;
   cited_by_recent: number;
+  /**
+   * Canonical citation strings for the case's cluster, from the corpus's
+   * own citation_strings table (official reporter first). The analyst must
+   * copy pin cites from here verbatim — never from model memory. Empty for
+   * memory-corpus fixtures without citation_strings rows.
+   */
+  cites?: string[];
   passages: Passage[];
 }
 
@@ -644,13 +651,46 @@ export function search(
   );
 
   const textStmt = db.prepare("SELECT text FROM opinions WHERE id = ?");
+  // Canonical citation strings per cluster (indexed; one statement reused).
+  let citesStmt: Database.Statement | null = null;
+  try {
+    citesStmt = db.prepare(
+      `SELECT volume, reporter, page, type FROM citation_strings
+        WHERE cluster_id = ?`
+    );
+    citesStmt.get(0); // validate the table exists on this handle up front
+  } catch {
+    citesStmt = null; // memory-corpus fixtures carry no citation_strings
+  }
+  const citeCache = new Map<number, string[]>();
+  const canonicalCites = (clusterId: number | null): string[] => {
+    if (clusterId == null || !citesStmt) return [];
+    const cached = citeCache.get(clusterId);
+    if (cached) return cached;
+    const rows = citesStmt.all(clusterId) as Array<{
+      volume: string;
+      reporter: string;
+      page: string;
+      type: number;
+    }>;
+    const rank = (cs: { reporter: string; type: number }): number =>
+      (cs.type === 1 ? 0 : 1) * 10 +
+      (cs.reporter === "U.S." ? 0 : cs.reporter === "S. Ct." ? 1 : cs.reporter.startsWith("L. Ed") ? 2 : 3);
+    const cites = rows
+      .sort((a, b) => rank(a) - rank(b))
+      .slice(0, 3)
+      .map((r) => `${r.volume} ${r.reporter} ${r.page}`);
+    citeCache.set(clusterId, cites);
+    return cites;
+  };
   const out = merged.map(({ row, final, pb }) => {
     const text = (textStmt.get(row.id) as { text: string } | undefined)?.text ?? "";
     return {
       opinion_id: row.id,
       cluster_id: row.cluster_id,
       case_name: row.case_name,
-      case_name_short: row.case_name_short,
+      // Some ETL rows carry Python's str(None) literally; never ship that.
+      case_name_short: row.case_name_short === "None" ? null : row.case_name_short,
       date_filed: row.date_filed,
       court_id: row.court_id,
       precedential_status: row.precedential_status,
@@ -668,6 +708,7 @@ export function search(
       },
       treatment_flags: row.treatment_flags ?? 0,
       cited_by_recent: row.recent_cites_2y ?? 0,
+      ...(canonicalCites(row.cluster_id).length > 0 ? { cites: canonicalCites(row.cluster_id) } : {}),
       passages: text ? [extractPassage(text, tokens)] : [],
     };
   });

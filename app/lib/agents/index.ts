@@ -237,6 +237,14 @@ Pin cite convention (CLAUDE.md §5.1): a pin cite is the volume + reporter
 + page, e.g. "410 U.S. 113" or "915 F.2d 1234, 1235". The form is the
 one the reporter uses, e.g. "456 U.S. 798, 800" (volume U.S. page).
 
+Citation grounding (Phase D): each retrieval hit may carry
+"canonical_cites" — the case's citation strings exactly as the corpus
+records them. When present, the case cite in your pin_cite MUST be one
+of those strings VERBATIM (you may append only the pin page after a
+comma, e.g. "505 U.S. 1003, 1015"). Do NOT cite a case from your own
+memory — a case name you recall is not authority here; if no supplied
+hit supports the sentence, write [INFERRED] or leave the case out.
+
 You MUST put every pin cite in BOTH places:
   1. inline at the end of the [LAW] sentence, in parentheses, e.g.
      "...the Court held that a warrant is required (410 U.S. 113, 117)."
@@ -295,6 +303,12 @@ export async function analystAgent(
       // 26065. render.ts now catches that downstream; this removes the
       // source. Never put machine-internal fields in a model payload.
       passages: h.passages.map((p) => p.text),
+      // Phase D grounding: the corpus's own canonical citation strings.
+      // Live run 2026-09-23 (run 54) proved the cost of omitting these:
+      // with nothing to copy, the model cited from memory — Sharpe as
+      // "488 U.S. 197" (real: 470 U.S. 675), Hicks as "479 U.S. 118"
+      // (real: 480 U.S. 321). The verifier rightly struck both.
+      ...(h.cites && h.cites.length > 0 ? { canonical_cites: h.cites } : {}),
     })),
   };
   const r = await generate(JSON.stringify(payload), {

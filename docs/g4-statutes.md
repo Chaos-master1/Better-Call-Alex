@@ -77,6 +77,15 @@ been loaded, the verifier keeps its pre-G4 behavior exactly. This closes
 the dominant `unsupported_form` rejections for full-form statutory cites
 seen in the G3 live run.
 
+**Status nuance (2026-09-23):** the shipped corpus loads eCFR titles only
+— there is no US Code — so a valid cite like `42 U.S.C. § 1983` cannot
+resolve and is reported `statute_not_loaded` (struck, draft not failed):
+the corpus cannot judge it, and the annotation says so instead of
+implying the cite is wrong. A wrong section under a loaded title is
+still `unresolved_citation` and fails the draft. Loading the US Code
+into `statutes` would resolve the common federal cites with no code
+change.
+
 Lookup surfaces: `alex lookup "42 C.F.R. § 483.35"` and
 `GET /api/lookup?cite=...` resolve statutes after (not instead of) case
 citations.
