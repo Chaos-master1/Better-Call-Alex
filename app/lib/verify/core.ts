@@ -129,6 +129,9 @@ export interface BridgeCitation {
   page: string | null;
   type: string;
   pin_cite: string | null;
+  /** Supra/name antecedent (eyecite antecedent_guess): the party name a
+   *  supra reference points at — matched against the draft's own chain. */
+  name?: string | null;
   start: number;
   end: number;
   error?: string;
@@ -503,6 +506,30 @@ export function* analyzeCitationsAndQuotesGen(
   // Nearest preceding RESOLVED full citation — the antecedent that gives
   // short/Id./supra forms their referent under chain semantics.
   let lastFull: CitationCheck | undefined;
+  // Every verified full/short resolution so far — the chain a supra NAME
+  // may point into.
+  const resolvedChain: CitationCheck[] = [];
+  /** Supra-name match: the antecedent_guess (usually a surname) must be
+   *  CONTAINED in a resolved antecedent's case name, case-insensitively.
+   *  Containment, never equality or fuzz: "Roe" ⊆ "Roe v. Wade". */
+  const resolveSupraByName = (
+    name: string
+  ): Pick<LookupResult, "cluster_id" | "opinion_id" | "case_name"> | null => {
+    const needle = name.trim().toLowerCase();
+    if (needle.length < 3) return null;
+    for (let i = resolvedChain.length - 1; i >= 0; i--) {
+      const cn = (resolvedChain[i].case_name ?? "").toLowerCase();
+      if (cn.includes(needle)) {
+        const a = resolvedChain[i];
+        return {
+          cluster_id: a.cluster_id!,
+          opinion_id: a.opinion_id!,
+          case_name: a.case_name ?? null,
+        };
+      }
+    }
+    return null;
+  };
   for (const c of extracted) {
     yield; // cooperative scheduling point (see async drain)
     if (c.error) {
@@ -543,6 +570,13 @@ export function* analyzeCitationsAndQuotesGen(
                 case_name: lastFull.case_name ?? null,
               }
             : null
+          : c.type === "supra" && c.name
+          ? // Supra: the NAME is the referent. Match it against the party
+            // names of the draft's own RESOLVED antecedents (chainScan).
+            // Conservative containment: the antecedent_guess is a surname
+            // fragment, so it must appear inside a resolved antecedent's
+            // name — never the reverse, never fuzzy.
+            resolveSupraByName(c.name)
           : resolveShortForm(c.volume, c.reporter, lastFull);
       if (shortRes) {
         const auth = db
@@ -567,6 +601,7 @@ export function* analyzeCitationsAndQuotesGen(
           case_name: shortRes.case_name,
           inferred_treatment: treatmentLabels(auth?.flags),
         });
+        resolvedChain.push(citations[citations.length - 1]);
         continue;
       }
       citations.push({
@@ -662,6 +697,7 @@ export function* analyzeCitationsAndQuotesGen(
     // full cite can lend its identity to "at 351" / "Id." references.
     if (!(res.all_cluster_ids && res.all_cluster_ids.length > 1)) {
       lastFull = citations[citations.length - 1];
+      resolvedChain.push(lastFull);
     }
   }
 

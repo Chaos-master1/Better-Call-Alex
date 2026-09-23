@@ -130,10 +130,12 @@ Corpus treatment flags rebuilt with the extended scanner via
 1. Short-form citations (`410 U.S., at 150`), `Id.` and `Supra.` resolve
    ONLY through the draft's own antecedent (nearest preceding verified
    full cite with matching vol+rep; `Id.` = the immediately preceding
-   one). A short form whose page matches some corpus first-page is NOT
-   resolved via that coincidence — a short form's page is a pin, and
-   guessing would attach the wrong authority. Anything unresolved stays
-   annotated `unsupported_form`, never silently accepted.
+   one; `Supra.` = a resolved antecedent whose case name CONTAINS the
+   supra's party name, via the bridge's antecedent_guess). A short form
+   whose page matches some corpus first-page is NOT resolved via that
+   coincidence — a short form's page is a pin, and guessing would attach
+   the wrong authority. Anything unresolved stays annotated
+   `unsupported_form`, never silently accepted.
 2. Pin pages cannot be verified: the corpus stores no star pagination.
    Annotated `pin_unverified`.
 3. Corpus cleaning artifacts can destroy a verbatim span (measured case:

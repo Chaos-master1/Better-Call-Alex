@@ -429,3 +429,77 @@ test("Id. with no antecedent stays unsupported_form", () => {
     db.close();
   }
 });
+
+test("supra with a name matching a resolved antecedent resolves", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11); // resolves to "Roe v. Wade"
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: "Roe",
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+  } finally {
+    db.close();
+  }
+});
+
+test("supra name NOT in the resolved chain stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11); // "Roe v. Wade"
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: "Katz",
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("supra with no name metadata falls back to unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: null,
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});

@@ -49,7 +49,8 @@ def classify(c):
 
 def serialize(c, text):
     groups = getattr(c, "groups", None) or {}
-    pin = getattr(getattr(c, "metadata", None), "pin_cite", None)
+    md = getattr(c, "metadata", None)
+    pin = getattr(md, "pin_cite", None)
     correct_reporter = getattr(c, "corrected_reporter", None)
     start, end = c.span()
     return {
@@ -61,6 +62,10 @@ def serialize(c, text):
         "page": groups.get("page"),
         "type": classify(c),
         "pin_cite": pin,
+        # Supra/name antecedent: eyecite's best guess at the party name a
+        # supra reference points at ("Roe" in "Roe, supra, at 164"). The
+        # verifier matches it against the draft's own resolved chain.
+        "name": getattr(md, "antecedent_guess", None),
         "start": max(0, start),
         "end": max(0, min(end, len(text))),
     }
