@@ -36,6 +36,7 @@ import {
   type LookupResult,
 } from "../db.js";
 import { findQuote, findQuoteGen } from "./quotes.js";
+import { parseStarAnchors, checkPin, type StarAnchor } from "./pins.js";
 import {
   parseStatuteCites,
   resolveStatute,
@@ -64,6 +65,13 @@ export interface CitationCheck {
   cite_end: number;
   status: "verified" | "unresolved_citation" | "unsupported_form" | "out_of_corpus";
   pin_unverified: boolean;
+  /** Rung 3 (star-page anchors): the pin's page falls INSIDE the cited
+   *  opinion's anchored page span. Present only when the resolved opinion
+   *  text carries star anchors and the cite has a pin; the report still
+   *  always exposes pin_unverified for renderers built on v1. */
+  pin_status?: "pin_in_range" | "pin_out_of_range" | "pin_no_anchors";
+  /** Raw pin string, carried from the bridge for the pin check. */
+  cite_pin_raw?: string | null;
   opinion_id?: number;
   cluster_id?: number;
   case_name?: string | null;
@@ -492,6 +500,37 @@ export function* analyzeCitationsAndQuotesGen(
   const quoteMemoKey = (sourceText: string, quote: string) =>
     `${quote}\u0000${sourceText.length}:${sourceText.length > 512 ? hashString(sourceText) : sourceText}`;
   const trueSourceMemo = new Map<string, QuoteCheck["true_source"]>();
+  // Per-analysis opinion-text memo (id → text): the quote ladder and the
+  // pin checks both read opinion texts; a draft leaning on one authority
+  // must not re-read (nor re-parse anchors of) a multi-MB opinion.
+  const textMemo = new Map<number, string | null>();
+  const readOpinionMemoized = function* (
+    id: number
+  ): Generator<void, string | null, void> {
+    if (textMemo.has(id)) return textMemo.get(id)!;
+    const text = yield* readOpinionTextGen(db, id);
+    textMemo.set(id, text);
+    return text;
+  };
+  const anchorsMemo = new Map<number, StarAnchor[]>();
+  function* anchorsFor(id: number): Generator<void, StarAnchor[], void> {
+    if (anchorsMemo.has(id)) return anchorsMemo.get(id)!;
+    const text = yield* readOpinionMemoized(id);
+    const anchors = text ? parseStarAnchors(text) : [];
+    anchorsMemo.set(id, anchors);
+    return anchors;
+  }
+  /** Rung 3: attach pin_status to a RESOLVED case citation carrying a pin. */
+  function* checkPinFor(
+    citation: CitationCheck,
+    opinionId: number
+  ): Generator<void, void, void> {
+    const anchors = yield* anchorsFor(opinionId);
+    const ps = checkPin(citation.cite_pin_raw ?? null, null, anchors);
+    if (ps === "pin_in_range" || ps === "pin_out_of_range" || ps === "pin_no_anchors") {
+      citation.pin_status = ps;
+    }
+  }
 
   // ---- citations ---------------------------------------------------------
   const citations: CitationCheck[] = [];
@@ -609,11 +648,13 @@ export function* analyzeCitationsAndQuotesGen(
           cite_end: c.end,
           status: "verified",
           pin_unverified: c.pin_cite != null,
+          cite_pin_raw: c.pin_cite,
           opinion_id: shortRes.opinion_id,
           cluster_id: shortRes.cluster_id,
           case_name: shortRes.case_name,
           inferred_treatment: treatmentLabels(auth?.flags),
         });
+        if (c.pin_cite) yield* checkPinFor(citations[citations.length - 1], shortRes.opinion_id);
         resolvedChain.push(citations[citations.length - 1]);
         continue;
       }
@@ -698,6 +739,7 @@ export function* analyzeCitationsAndQuotesGen(
       cite_end: c.end,
       status: "verified",
       pin_unverified: c.pin_cite != null,
+      cite_pin_raw: c.pin_cite,
       opinion_id: res.opinion_id,
       cluster_id: res.cluster_id,
       case_name: res.case_name,
@@ -706,6 +748,11 @@ export function* analyzeCitationsAndQuotesGen(
         ? { ambiguous_cluster_ids: res.all_cluster_ids }
         : {}),
     });
+    // Rung 3: pin check rides the resolution — the anchors parse from the
+    // (memoized) opinion text.
+    if (c.pin_cite) {
+      yield* checkPinFor(citations[citations.length - 1], res.opinion_id);
+    }
     // The antecedent for later short forms: only a RESOLVED, UNAMBIGUOUS
     // full cite can lend its identity to "at 351" / "Id." references.
     if (!(res.all_cluster_ids && res.all_cluster_ids.length > 1)) {

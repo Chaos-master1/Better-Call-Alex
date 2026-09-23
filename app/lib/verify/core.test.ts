@@ -44,7 +44,7 @@ function memoryCorpus(): Database.Database {
   db.exec(
     `INSERT INTO opinions (id, cluster_id, case_name, type, blocked, text)
      VALUES (1, 100, 'Roe v. Wade', 'lead', 0,
-       'the quick brown fox jumps over the lazy dog and then some more words here')`
+       '*113 the quick brown fox jumps over the lazy dog and then *114 some more words here')`
   );
   db.exec(`INSERT INTO opinions_fts (rowid, text) VALUES (1, 'the quick brown fox jumps over the lazy dog and then some more words here')`);
   db.exec(`INSERT INTO citation_strings VALUES (100, '410', 'U.S.', '113', 'full')`);
@@ -537,6 +537,50 @@ test("bare § tokenizer artifacts are skipped, real statutory cites ride untouch
     const reported = report.citations.map((c) => c.citation_text);
     assert.ok(!reported.includes("§"), "bare § must not appear as a citation");
     assert.equal(reported.filter((t) => t === "42 U.S.C. § 1983").length, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test("pin inside the opinion's star-page span is pin_in_range", () => {
+  const db = memoryCorpus();
+  try {
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "114",
+      start: 0,
+      end: 12,
+    };
+    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 114");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[0].pin_status, "pin_in_range");
+  } finally {
+    db.close();
+  }
+});
+
+test("pin outside the star-page span is pin_out_of_range", () => {
+  const db = memoryCorpus();
+  try {
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "999",
+      start: 0,
+      end: 12,
+    };
+    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 999");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[0].pin_status, "pin_out_of_range");
   } finally {
     db.close();
   }
