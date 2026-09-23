@@ -39,8 +39,11 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
            │                  -> quote_not_found             (§5.2)
            │     match elsewhere -> quote_wrong_case + best-effort
            │                          true source identification
-           ├──> annotate: short/id/supra forms = unsupported_form;
-           │     pin pages = pin_unverified (corpus has no star pages)
+           ├──> short/id/supra forms: resolve through the draft's own
+           │     ANTECEDENT (nearest preceding verified full cite with
+           │     matching vol+rep; Id. = the immediately preceding one).
+           │     No antecedent → unsupported_form annotation, never a
+           │     guess. Pin pages = pin_unverified (no star pages).
            └──> attach INFERRED treatment flags (cluster-level max from
                  authority), never asserted                  (§5.5)
 
@@ -124,8 +127,13 @@ Corpus treatment flags rebuilt with the extended scanner via
 
 ## Honest limitations
 
-1. Short-form citations (`410 U.S., at 150`), `Id.` and `Supra.` are not
-   resolved — annotated `unsupported_form`, never silently accepted.
+1. Short-form citations (`410 U.S., at 150`), `Id.` and `Supra.` resolve
+   ONLY through the draft's own antecedent (nearest preceding verified
+   full cite with matching vol+rep; `Id.` = the immediately preceding
+   one). A short form whose page matches some corpus first-page is NOT
+   resolved via that coincidence — a short form's page is a pin, and
+   guessing would attach the wrong authority. Anything unresolved stays
+   annotated `unsupported_form`, never silently accepted.
 2. Pin pages cannot be verified: the corpus stores no star pagination.
    Annotated `pin_unverified`.
 3. Corpus cleaning artifacts can destroy a verbatim span (measured case:

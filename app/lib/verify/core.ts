@@ -28,7 +28,13 @@
  * entries become `unresolved_citation` checks (overall=fail), not filters.
  */
 import type Database from "better-sqlite3";
-import { resolveCluster, type LookupResult } from "../db.js";
+import {
+  resolveCluster,
+  normalizePage,
+  normalizeReporter,
+  normalizeVolume,
+  type LookupResult,
+} from "../db.js";
 import { findQuote, findQuoteGen } from "./quotes.js";
 import {
   parseStatuteCites,
@@ -400,6 +406,42 @@ export function* readOpinionTextGen(
   return out;
 }
 
+/**
+ * Short-form resolution (Phase B rung 1) — ANTECEDENT-ONLY, by design.
+ *
+ * A short form ("389 U.S., at 351") resolves when the nearest PRECEDING
+ * verified full citation carries the same (volume, reporter): the draft
+ * itself established the referent, so resolution is not a guess.
+ *
+ * Deliberately ABSENT: matching the short form's page against corpus
+ * first-pages. A short form's page is a PIN, not a first page — a pin that
+ * coincides with some other case's first page would silently attach the
+ * WRONG authority, which is worse than an annotation. No fuzzy matching:
+ * a wrong resolution is the only unacceptable outcome.
+ */
+function resolveShortForm(
+  volume: string | null,
+  reporter: string | null,
+  antecedent: CitationCheck | undefined
+): Pick<LookupResult, "cluster_id" | "opinion_id" | "case_name"> | null {
+  if (!volume || !reporter) return null;
+  if (
+    antecedent &&
+    antecedent.status === "verified" &&
+    antecedent.volume != null &&
+    antecedent.reporter != null &&
+    normalizeVolume(antecedent.volume) === normalizeVolume(volume) &&
+    normalizeReporter(antecedent.reporter) === normalizeReporter(reporter)
+  ) {
+    return {
+      cluster_id: antecedent.cluster_id!,
+      opinion_id: antecedent.opinion_id!,
+      case_name: antecedent.case_name ?? null,
+    };
+  }
+  return null;
+}
+
 export interface AnalyzeOptions {
   /** Char ranges (e.g. [RECORD] sentences) whose quoted spans are the
    *  client's own facts, not corpus claims — quote checks are skipped for
@@ -458,6 +500,9 @@ export function* analyzeCitationsAndQuotesGen(
   const statuteHits = hasStatutes ? parseStatuteCites(text) : [];
   const overlapsStatute = (start: number, end: number): boolean =>
     statuteHits.some((s) => start < s.end && end > s.start);
+  // Nearest preceding RESOLVED full citation — the antecedent that gives
+  // short/Id./supra forms their referent under chain semantics.
+  let lastFull: CitationCheck | undefined;
   for (const c of extracted) {
     yield; // cooperative scheduling point (see async drain)
     if (c.error) {
@@ -483,6 +528,47 @@ export function* analyzeCitationsAndQuotesGen(
     // Spans ride ON the check object: parallel-array indexing against the
     // input would silently desync.
     if (c.type !== "full") {
+      // Phase B rung 1: Id. and short forms resolve through the draft's
+      // own antecedent (see resolveShortForm / the id branch below). No
+      // resolution → the v1 honest annotation stands.
+      const shortRes =
+        c.type === "id"
+          ? // "Id." refers to the IMMEDIATELY preceding citation by
+            // definition; it resolves only when that antecedent verified —
+            // a broken chain lends no authority.
+            lastFull && lastFull.status === "verified"
+            ? {
+                cluster_id: lastFull.cluster_id!,
+                opinion_id: lastFull.opinion_id!,
+                case_name: lastFull.case_name ?? null,
+              }
+            : null
+          : resolveShortForm(c.volume, c.reporter, lastFull);
+      if (shortRes) {
+        const auth = db
+          .prepare(
+            `SELECT max(a.treatment_flags) AS flags FROM authority a
+             JOIN opinions o ON o.id = a.opinion_id WHERE o.cluster_id = ?`
+          )
+          .get(shortRes.cluster_id) as { flags: number | null } | undefined;
+        citations.push({
+          citation_text: c.text,
+          corrected: c.corrected,
+          volume: c.volume,
+          reporter: c.reporter,
+          page: c.page,
+          form: c.type,
+          cite_start: c.start,
+          cite_end: c.end,
+          status: "verified",
+          pin_unverified: c.pin_cite != null,
+          opinion_id: shortRes.opinion_id,
+          cluster_id: shortRes.cluster_id,
+          case_name: shortRes.case_name,
+          inferred_treatment: treatmentLabels(auth?.flags),
+        });
+        continue;
+      }
       citations.push({
         citation_text: c.text,
         corrected: c.corrected,
@@ -507,6 +593,9 @@ export function* analyzeCitationsAndQuotesGen(
       c.page ?? ""
     );
     if (!res) {
+      // A full cite that fails to resolve must NOT become the antecedent
+      // for later short forms — a broken chain cannot lend authority.
+      lastFull = undefined;
       // Out-of-corpus reporters (WL/Lexis): unresolvable BY CONSTRUCTION,
       // not evidence of fabrication. Annotate, do not fail — the corpus
       // will never carry these numbers (probe01: WL resolve rate 2.65%,
@@ -569,6 +658,11 @@ export function* analyzeCitationsAndQuotesGen(
         ? { ambiguous_cluster_ids: res.all_cluster_ids }
         : {}),
     });
+    // The antecedent for later short forms: only a RESOLVED, UNAMBIGUOUS
+    // full cite can lend its identity to "at 351" / "Id." references.
+    if (!(res.all_cluster_ids && res.all_cluster_ids.length > 1)) {
+      lastFull = citations[citations.length - 1];
+    }
   }
 
   // Statutory citations, resolved against the statutes table. A quoted

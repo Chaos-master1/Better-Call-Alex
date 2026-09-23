@@ -7,8 +7,9 @@
  *   - every quoted span must match the text of the case it is attributed
  *     to, else `quote_not_found` / `quote_wrong_case` (+ best-effort true
  *     source) and overall=fail (§5.2);
- *   - short/id/supra forms are annotated `unsupported_form`, not rejected
- *     (v1 limitation);
+ *   - short/id/supra forms resolve through the draft's own antecedent
+ *     (nearest preceding verified full cite, matching vol+rep; Id. = the
+ *     immediately preceding one) or stay annotated `unsupported_form`;
  *   - pin pages are never verified (the corpus has no star pagination) —
  *     annotated `pin_unverified`;
  *   - treatment flags are INFERRED signals read from the authority table,

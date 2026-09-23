@@ -318,3 +318,114 @@ test("true-source probe never names a de-indexed (blocked) opinion", () => {
     db.close();
   }
 });
+
+// ——— short-form / Id. chain resolution (Phase B rung 1) ———
+
+function shortCite(
+  text: string,
+  opts: Partial<BridgeCitation> = {}
+): BridgeCitation {
+  return {
+    text,
+    corrected: text,
+    volume: "410",
+    reporter: "U.S.",
+    page: null,
+    type: "short",
+    pin_cite: "200",
+    start: 0,
+    end: text.length,
+    ...opts,
+  };
+}
+
+test("short form with matching verified antecedent resolves (chain semantics)", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const short = shortCite("410 U.S., at 200", { start: 20, end: 36 });
+    const report = analyzeCitationsAndQuotes(db, [full, short], "410 U.S. 113 … 410 U.S., at 200");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+    assert.equal(report.citations[1].case_name, "Roe v. Wade");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form WITHOUT antecedent stays unsupported_form, not resolved", () => {
+  const db = memoryCorpus();
+  try {
+    const short = shortCite("410 U.S., at 200");
+    const report = analyzeCitationsAndQuotes(db, [short], "410 U.S., at 200");
+    assert.equal(report.citations[0].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form after a FAILED full cite stays unsupported_form (broken chain)", () => {
+  const db = memoryCorpus();
+  try {
+    const bad = fullCite("999", 0, 11); // not in the memory corpus
+    const short = shortCite("410 U.S., at 200", { start: 20, end: 36 });
+    const report = analyzeCitationsAndQuotes(db, [bad, short], "410 U.S. 999 … 410 U.S., at 200");
+    assert.equal(report.citations[0].status, "unresolved_citation");
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form with MISMATCHED reporter stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const other = shortCite("347 U.S., at 200", {
+      volume: "347",
+      start: 20,
+      end: 36,
+    });
+    const report = analyzeCitationsAndQuotes(db, [full, other], "410 U.S. 113 … 347 U.S., at 200");
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("Id. after a verified full cite resolves to that antecedent", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const id = shortCite("Id. at 205.", {
+      type: "id",
+      volume: null,
+      reporter: null,
+      page: null,
+      start: 20,
+      end: 31,
+    });
+    const report = analyzeCitationsAndQuotes(db, [full, id], "410 U.S. 113 … Id. at 205.");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+  } finally {
+    db.close();
+  }
+});
+
+test("Id. with no antecedent stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const id = shortCite("Id.", {
+      type: "id",
+      volume: null,
+      reporter: null,
+      page: null,
+    });
+    const report = analyzeCitationsAndQuotes(db, [id], "Id.");
+    assert.equal(report.citations[0].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
