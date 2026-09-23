@@ -16,6 +16,39 @@ import {
   type TaggedSentence,
 } from "./render.js";
 
+// Tiny corpus for the pin-strike gate: one Roe-shaped opinion with star
+// anchors *113 and *114, resolvable at 410 U.S. 113 (mirrors core.test.ts).
+function pinCorpus(): Database.Database {
+  const db = new Database(":memory:");
+  db.exec(
+    `CREATE TABLE opinions (id INTEGER PRIMARY KEY, cluster_id INTEGER,
+      case_name TEXT, case_name_short TEXT, date_filed TEXT, court_id TEXT,
+      type TEXT, blocked INTEGER DEFAULT 0,
+      precedential_status TEXT, citation_count INTEGER, text TEXT)`
+  );
+  db.exec(
+    `CREATE TABLE citation_strings (cluster_id INTEGER, volume TEXT,
+      reporter TEXT, page TEXT, type TEXT)`
+  );
+  db.exec(`CREATE VIRTUAL TABLE opinions_fts USING fts5(text)`);
+  db.exec(
+    `INSERT INTO opinions (id, cluster_id, case_name, type, blocked, text)
+     VALUES (1, 100, 'Roe v. Wade', 'lead', 0,
+       '*113 the quick brown fox jumps over the lazy dog and then *114 some more words here')`
+  );
+  db.exec(
+    `INSERT INTO opinions_fts (rowid, text) VALUES (1, 'the quick brown fox jumps over the lazy dog and then some more words here')`
+  );
+  db.exec(`INSERT INTO citation_strings VALUES (100, '410', 'U.S.', '113', 'full')`);
+  db.exec(
+    `CREATE TABLE cites (citing_id INTEGER, cited_id INTEGER, depth INTEGER, blocked INTEGER)`
+  );
+  db.exec(
+    `CREATE TABLE authority (opinion_id INTEGER PRIMARY KEY, pagerank REAL, recent_cites_2y INTEGER, treatment_flags INTEGER)`
+  );
+  return db;
+}
+
 const FACTS =
   "family owns beachfront lots purchased for investment. " +
   "state coastal regulation bars permanent habitable structures. " +
@@ -94,6 +127,45 @@ test("non-RECORD sentences pass through untouched", () => {
     sentences.map((s) => s.tag),
     ["LAW", "INFERRED"]
   );
+});
+
+// ——— pin_out_of_range strike (Phase B rung 3 surfacing) ———
+
+test("a pin outside the cited opinion's star-page span fails the sentence", () => {
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here.",
+        pin_cite: "410 U.S. 113, 999", // 999 is outside the *113–*114 span
+      },
+    ]);
+    assert.equal(sentences[0].verified, false);
+    assert.ok(
+      sentences[0].detail.some((d) => d.includes("OUTSIDE")),
+      `expected OUTSIDE detail, got: ${JSON.stringify(sentences[0].detail)}`
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("a pin inside the span keeps the sentence verified", () => {
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here.",
+        pin_cite: "410 U.S. 113, 114", // inside the span
+      },
+    ]);
+    assert.equal(sentences[0].verified, true);
+    assert.ok(!sentences[0].detail.some((d) => d.includes("OUTSIDE")));
+  } finally {
+    db.close();
+  }
 });
 
 test("too-short RECORD cannot be judged and is kept", () => {

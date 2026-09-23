@@ -16,8 +16,8 @@
  *     source) and overall=fail (§5.2);
  *   - short/id/supra forms are annotated `unsupported_form`, not rejected
  *     (v1 limitation);
- *   - pin pages are never verified (the corpus has no star pagination) —
- *     annotated `pin_unverified`;
+ *   - pin pages are checked against star pagination where the corpus
+ *     carries it (`pin_status`: in_range / out_of_range / no_anchors);
  *   - treatment flags are INFERRED signals read from the authority table,
  *     never asserted facts (§5.5);
  *   - [RECORD] sentence ranges passed via `skipQuoteRanges` are the

@@ -43,7 +43,8 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
            │     ANTECEDENT (nearest preceding verified full cite with
            │     matching vol+rep; Id. = the immediately preceding one).
            │     No antecedent → unsupported_form annotation, never a
-           │     guess. Pin pages = pin_unverified (no star pages).
+           │     guess. Pin pages: checked against star-page anchors where the
+│     corpus carries them (pin_status; out_of_range fails).
            └──> attach INFERRED treatment flags (cluster-level max from
                  authority), never asserted                  (§5.5)
 
@@ -136,8 +137,14 @@ Corpus treatment flags rebuilt with the extended scanner via
    coincidence — a short form's page is a pin, and guessing would attach
    the wrong authority. Anything unresolved stays annotated
    `unsupported_form`, never silently accepted.
-2. Pin pages cannot be verified: the corpus stores no star pagination.
-   Annotated `pin_unverified`.
+2. Pin pages verify against star pagination where the corpus has it
+   (CourtListener embeds `*115` markers inline; Roe's lead opinion alone
+   carries 68 anchors). `pin_status` ∈ {`pin_in_range`,
+   `pin_out_of_range`, `pin_no_anchors`} — `pin_out_of_range` fails the
+   sentence (a pin the authority does not contain is a mis-reference);
+   `pin_no_anchors` (OCR-damaged or unanchored text) keeps the v1
+   annotation. Scope: the pin's page EXISTS in the cited opinion; whether
+   the proposition sits on that exact page is not machine-checkable.
 3. Corpus cleaning artifacts can destroy a verbatim span (measured case:
    Katz lead opinion contains `intruding eyeit` — separators eaten during
    HTML→text conversion). The matcher does not fuzz across such damage;

@@ -198,7 +198,7 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
     blocks.push({ kind: "cert_line", text: cert.statement });
     blocks.push({
       kind: "cert_line",
-      text: `Treatment signals are INFERRED from citing language, never asserted (§5.5). Pin pages are not verified against star pagination (corpus limitation, docs/verifier.md).`,
+      text: `Treatment signals are INFERRED from citing language, never asserted (§5.5). Pin pages are checked against star pagination where the corpus carries it; a pin outside the cited opinion\’s pages is flagged (docs/verifier.md).`,
     });
   } else {
     blocks.push({

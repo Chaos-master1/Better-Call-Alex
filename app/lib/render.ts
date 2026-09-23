@@ -169,6 +169,14 @@ function crossReference(
     let verified = true;
     for (const c of cits) {
       detail.push(`cite '${c.citation_text}' → ${c.status}`);
+      // Rung 3 surfacing: a pin whose page falls outside the cited
+      // opinion's star-page span is a real defect the user must see.
+      // Annotation here; the strike happens below.
+      if (c.pin_status === "pin_out_of_range") {
+        detail.push(
+          `cite '${c.citation_text}' → pin ${c.cite_pin_raw ?? ""} is OUTSIDE the cited opinion's star-page span — check the pin`
+        );
+      }
       if (c.status !== "verified") verified = false;
       // probe04 (audit 2026-09-20): 7.2% of (vol, rep, page) groups map to
       // >1 cluster. The cite still verifies; the AMBIGUITY is surfaced so
@@ -190,6 +198,12 @@ function crossReference(
         );
       }
       if (q.status !== "verified") verified = false;
+    }
+    // A pin outside the cited opinion's star-page span is a material
+    // mis-reference: the sentence claims law at a page the authority does
+    // not contain. Surfaced in detail above; here it strikes.
+    if (cits.some((c) => c.pin_status === "pin_out_of_range")) {
+      verified = false;
     }
     // [LAW] must carry CHECKED authority. §5.3 + §5.1. The pin may arrive
     // via the dedicated field (local JSON tier) or inline as a parenthetical
