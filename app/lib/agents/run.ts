@@ -374,9 +374,11 @@ function rehydrateParties(
     irac: Object.fromEntries(
       Object.entries(drafted.irac).map(([k, v]) => [k, swap(v)])
     ) as typeof drafted.irac,
-    element_checklist: drafted.element_checklist.map((e) =>
-      typeof e === "string" ? swap(e) : e
-    ) as typeof drafted.element_checklist,
+    element_checklist: drafted.element_checklist.map((e) => ({
+      ...e,
+      element: swap(e.element),
+      basis: swap(e.basis),
+    })) as typeof drafted.element_checklist,
     sentences: drafted.sentences.map((s) => ({ ...s, text: swap(s.text) })),
     adversary: {
       ...drafted.adversary,

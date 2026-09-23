@@ -35,7 +35,10 @@ test("assignment order is occurrence order, stable across transforms", () => {
 test("case-insensitive match, placeholder reused for the same name", () => {
   const g = createPayloadGuard(["acme corp"]);
   const out = g.transform("analyst", "ACME CORP and Acme Corp and acme corp");
-  assert.equal((out.match(/\[PARTY 1\]/g) ?? []).length, 3);
+  // The redaction instruction (appended after capping) mentions [PARTY 1]
+  // once; the payload body must carry exactly the three replaced spans.
+  const body = out.split("[REDACTION]")[0];
+  assert.equal((body.match(/\[PARTY 1\]/g) ?? []).length, 3);
 });
 
 test("short and blank names are ignored", () => {

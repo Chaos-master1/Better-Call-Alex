@@ -1,0 +1,29 @@
+{
+  "proof": "cloud redaction (ADR-004 §2.4)",
+  "date": "2026-09-23T01:05:44.918Z",
+  "engine": "cloud (live endpoint)",
+  "names_redacted_count": 2,
+  "checks": {
+    "chatCalls": 5,
+    "wire_clean": true,
+    "wire_carries_placeholders": true,
+    "audit_guard_row": true,
+    "audit_counts_only": true,
+    "redacted_count_positive": true,
+    "draft_names_rehydrated": true,
+    "draft_has_no_placeholders": true
+  },
+  "wire_calls_captured": 5,
+  "audit_guard": {
+    "caseId": 1,
+    "cappedStages": [],
+    "droppedPassages": 0,
+    "redactedPartyCount": 2
+  },
+  "draft_placeholder_residue": 0,
+  "residue_samples": [],
+  "names_missing_from_draft": [],
+  "draft_overall": "fail",
+  "ms": 28591.688357000003,
+  "pass": true
+}

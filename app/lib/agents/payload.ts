@@ -117,6 +117,17 @@ export function createPayloadGuard(
         cappedStages.push(stage);
         droppedPassages += capped.dropped;
       }
+      // Live-run lesson (logs/redaction-live.json): a model left to its own
+      // devices paraphrases around placeholders ("the guest"), and then the
+      // local rehydration has no [PARTY n] marker to restore — the user's
+      // draft comes home nameless. The instruction rides AFTER capping so
+      // it can never be truncated away, and only when redaction is active.
+      if (names.length > 0) {
+        capped.text +=
+          "\n\n[REDACTION] Party names appear as [PARTY 1], [PARTY 2], … " +
+          "Refer to every party ONLY by its placeholder, exactly as written; " +
+          "never invent, guess, or paraphrase a party name.";
+      }
       return capped.text;
     },
     namesInAssignmentOrder() {
