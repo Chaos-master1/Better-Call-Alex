@@ -63,7 +63,7 @@ verification local is the highest-leverage move available.
 
 The G3 five-pattern harness is the measured evidence that analyst/
 adversary reasoning depth on 9B/14B is the weak point; §9.1 names it.
-`evals/run_g3_ab.ts` runs the same five patterns under both engines and
+`evals/run_g3_ab.ts` runs the same fact patterns under both engines and
 records objective verification metrics side by side into
 `logs/g3-ab-report.json` — that report is the standing evidence for this
 ADR and the routing table's ongoing justification.

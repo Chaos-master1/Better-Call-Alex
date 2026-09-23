@@ -27,7 +27,7 @@ import { runCase } from "../app/lib/agents/run.js";
 import { currentModel } from "../app/lib/llm.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PATTERNS = path.join(REPO, "evals", "g3-five-patterns.json");
+const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 const OUT = path.join(REPO, "logs", "g3-report.json");
 
 const OFFLINE = process.argv.includes("--offline");
@@ -199,7 +199,7 @@ async function main() {
       );
     }
     if (!allPass) process.exit(1);
-    console.log("G3 GATE: PASS — five patterns gated (or skipped offline) correctly");
+    console.log(`G3 GATE: PASS — ${spec.patterns.length} patterns gated (or skipped offline) correctly`);
   } finally {
     app.close();
   }

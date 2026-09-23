@@ -26,7 +26,7 @@ import { cloudAvailable } from "../app/lib/llm.js";
 import { loadRepoEnv } from "../app/lib/env.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PATTERNS = path.join(REPO, "evals", "g3-five-patterns.json");
+const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 const OUT_DIR = path.join(REPO, "logs");
 const OUT = path.join(OUT_DIR, "g3-ab-report.json");
 
@@ -190,7 +190,7 @@ async function main() {
         {
           generated_at: new Date().toISOString(),
           env_mode: parseEngineMode(process.env.ALEX_ENGINE),
-          scope: only ? `partial: patterns ${selected.map((p) => p.id).join(", ")} (--only)` : "full: all five patterns",
+          scope: only ? `partial: patterns ${selected.map((p) => p.id).join(", ")} (--only)` : `full: all ${spec.patterns.length} patterns`,
           note:
             "Objective metrics only; no LLM judge (circularity). Side-by-side drafts are for human review. A/B per ADR-004 §2.9.",
           patterns: report,

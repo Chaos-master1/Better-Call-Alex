@@ -34,7 +34,7 @@ import {
 } from "../app/lib/render.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PATTERNS = path.join(REPO, "evals", "g3-five-patterns.json");
+const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 
 async function main() {
   loadRepoEnv();

@@ -44,7 +44,7 @@ async function main() {
   }
 
   const spec = JSON.parse(
-    readFileSync(path.join(REPO, "evals", "g3-five-patterns.json"), "utf-8")
+    readFileSync(path.join(REPO, "evals", "g3-patterns.json"), "utf-8")
   ) as { patterns: Array<{ id: string; facts: string }> };
   const pattern = spec.patterns[0];
 

@@ -546,15 +546,19 @@ export function negativeTreatmentHits(
 async function counterQueryFrom(
   intake: IntakeOutput,
   analyst: AnalystOutput
-): Promise<string> {  // Cheap heuristic: use the claims + a known counter-doctrine phrase.
-  // Real adversarial framing is for the model; we just give it a retrieval
-  // seed that is the opposite of the analyst's rule.
+): Promise<string> {
+  // Retrieval-dialect constraint (g3 fact-03 adversary-zero fix, 2026-09-23):
+  // search() AND-conjoins its tokens — a natural-language question becomes a
+  // 10-token conjunction that matches nothing. The counter frame must arrive
+  // as doctrine phrases + key terms, the same discipline the Researcher's
+  // query agent follows for our FTS dialect.
   const claim = intake.claims[0] ?? "";
   const r = await generate(
-    `Given the plaintiff's claim "${claim}" and the analyst's rule "${
-      analyst.irac.rule
-    }", write a single short US case-law retrieval query that would surface
-    authority AGAINST the analyst's conclusion. Output only the query string.`,
+    `Write ONE case-law retrieval query that would surface authority AGAINST the analyst's conclusion.
+Claim: "${claim}"
+Rule relied on: "${analyst.irac.rule}"
+Requirements: 2-6 terms total; use established doctrine phrases (e.g. "qualified immunity", "duty to warn", "public necessity exception") plus at most two other key terms; single spaces; NOT a sentence; no question mark; no quotes.
+Output only the query.`,
     { maxTokens: 60 }
   );
   const raw = r.content.trim().split("\n")[0].slice(0, 200).trim();

@@ -3,7 +3,7 @@
 Run timestamp: 2026-08-30 23:30 UTC — **LIVE PASS** (this tree; Ollama live, 197 GB corpus attached; committed evidence `logs/g3-report.json` offline:false overall:pass). Prior live pass 2026-08-29 documented below.
 Pipeline: `alex run "<facts>"` (CLI) or `POST /api/run` (web UI).
 Composition: intake → researcher (qwen3.5:9b) → swap → analyst + adversary (qwen3:14b, batched, ≤2 swaps) → **async** G2 Verifier (`verify_async.ts`, `spawn` not `spawnSync`) → **drafter template** (`draft.ts`, banner in code) → render.
-Harness: `evals/g3-five-patterns.json` (5 patterns) + `evals/run_g3.ts` (`pnpm g3` / `pnpm g3:offline`). Single-flight mutex `run.ts:50` + `llm.ts:66` retry serializes swaps so concurrent `POST /api/run` queue instead of `fetch failed`. Offline harness skips LLM but checks deterministic gates (tag, adversary, audit).
+Harness: `evals/g3-patterns.json` (5 patterns) + `evals/run_g3.ts` (`pnpm g3` / `pnpm g3:offline`). Single-flight mutex `run.ts:50` + `llm.ts:66` retry serializes swaps so concurrent `POST /api/run` queue instead of `fetch failed`. Offline harness skips LLM but checks deterministic gates (tag, adversary, audit).
 
 ---
 
@@ -18,7 +18,7 @@ Harness: `evals/g3-five-patterns.json` (5 patterns) + `evals/run_g3.ts` (`pnpm g
 - `app/lib/calc/dates.ts` — deterministic `parseISO/addDays/daysBetween/nextBusinessDay/isExpired` (§5.7)
 - `app/app/page.tsx` — authority cards (BM25/authority/parenthetical/recent/inferred), passages with char offsets, element checklist table, adversary + counter-authority, authority appendix, audit log, banner in code, struck-through `!verified`
 - `app/app/api/run/route.ts` — now returns `research.hits`, `draft.report`, `drafted`, `audit` (12 rows), `run_id`
-- `evals/g3-five-patterns.json` + `evals/run_g3.ts` (offline passes; full run needs `ollama pull qwen3.5:9b && ollama pull qwen3:14b`, `ALEX_VERIFY_SYNC` toggle, 60s budget per pattern documented as model-bound)
+- `evals/g3-patterns.json` + `evals/run_g3.ts` (offline passes; full run needs `ollama pull qwen3.5:9b && ollama pull qwen3:14b`, `ALEX_VERIFY_SYNC` toggle, 60s budget per pattern documented as model-bound)
 
 ### Live harness 2026-08-29 (after hardening, other apps freed, swap 6.9→1.1 GiB, 9.5 GiB free, single-flight + retry)
 
