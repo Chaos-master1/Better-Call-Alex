@@ -68,6 +68,28 @@ records objective verification metrics side by side into
 `logs/g3-ab-report.json` — that report is the standing evidence for this
 ADR and the routing table's ongoing justification.
 
+## Cloud transport facts (measured live, 2026-09-24)
+
+- **Streaming is the working protocol.** Gemini's OpenAI-compat endpoint
+  stalls ≥120 s on non-streaming `chat/completions` POSTs while GET
+  `/models` answers in 0.3 s and the same POST with `stream:true` returns
+  in seconds. `llm.ts` therefore always requests `stream:true` and
+  accumulates SSE deltas; JSON-response gateways take the unchanged
+  non-SSE parse. Mid-stream transport failure is retryable, never a
+  silent truncation.
+- **Streaming makes `max_completion_tokens` strict.** A 60-token cap that
+  local models treated as advisory produced `finish_reason=length` on the
+  cloud (reasoning consumes completion budget before visible text). Stage
+  budgets must leave reasoning headroom (counter-query raised 60→300).
+- **`response_format:json_object` is not a guarantee.** Gemini can emit
+  raw control characters inside JSON string values. `parseJson` (the
+  single JSON boundary for agent output) runs one deterministic repair —
+  escaping control chars inside string literals only — and still throws
+  loud when the payload is genuinely unrecoverable.
+- **Worker `--import tsx` must resolve from app/, not the process cwd.**
+  Eval harnesses run from the repo root where tsx is not installed; the
+  worker now resolves the loader against `app/package.json`.
+
 ## Consequences
 
 - Local remains the privacy tier and the air-gapped SKU; cloud is opt-in

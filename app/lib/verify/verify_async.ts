@@ -12,6 +12,8 @@
 import { spawn } from "node:child_process";
 import { Worker } from "node:worker_threads";
 import path from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import { resolveRepo } from "../repo.js";
 import { CORPUS_PATH } from "../db.js";
@@ -110,8 +112,24 @@ function failAll(err: Error) {
 }
 
 function spawnWorker(): Worker {
+  // `--import tsx` resolves bare "tsx" against the process cwd — the eval
+  // harness runs from the repo root, where tsx is NOT installed (it lives
+  // in app/), so every worker crashed into in-thread degradation (observed
+  // live, g3 cloud run 2026-09-24). Anchor resolution to app/package.json
+  // and pass the absolute loader path instead.
+  let importSpec = "tsx";
+  try {
+    const req = createRequire(path.join(REPO, "app", "package.json"));
+    // tsx's exports map blocks subpaths; the main entry resolves to the
+    // loader file itself (tsx 4.x), so resolving "tsx" IS the loader path.
+    const main = req.resolve("tsx");
+    importSpec = main.endsWith("loader.mjs") ? pathToFileURL(main).href : "tsx";
+  } catch {
+    // app/node_modules/tsx missing — keep the bare specifier and let the
+    // existing in-thread degradation handle it as before.
+  }
   const w = new Worker(path.join(REPO, "app", "lib", "verify", "verify_worker.ts"), {
-    execArgv: ["--import", "tsx"],
+    execArgv: ["--import", importSpec],
   });
   // Idle-unref'd: an unref'd worker does not keep the parent's event loop
   // alive, so test runners and CLIs exit when their own work is done (the

@@ -29,6 +29,17 @@ import { currentModel } from "../app/lib/llm.js";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 const OUT = path.join(REPO, "logs", "g3-report.json");
+// --out=<path> redirects the report artifact (engine-separated evidence:
+// cloud runs write logs/g3-cloud-report.json instead of touching the
+// committed local-tier evidence). Refuses paths outside logs/.
+const outArg = process.argv.find((a) => a.startsWith("--out="));
+const OUT_OVERRIDE = outArg
+  ? path.resolve(REPO, outArg.slice(6))
+  : null;
+if (OUT_OVERRIDE && !OUT_OVERRIDE.startsWith(path.join(REPO, "logs") + path.sep)) {
+  console.error(`--out must land inside logs/ (got ${OUT_OVERRIDE})`);
+  process.exit(2);
+}
 // Verified-rate ratchet: the last accepted live run's rate is the floor. A
 // regression beyond the tolerance fails the gate; a better rate ratchets the
 // baseline up. Structural gates stay as-is — this tracks the product metric
@@ -260,7 +271,7 @@ async function main() {
     // Such runs write to a sidecar path instead.
     const outPath =
       !OFFLINE && skipped === 0
-        ? OUT
+        ? (OUT_OVERRIDE ?? OUT)
         : OUT.replace(/\.json$/, OFFLINE ? ".offline.json" : ".partial.json");
     mkdirSync(path.dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify(report, null, 2));

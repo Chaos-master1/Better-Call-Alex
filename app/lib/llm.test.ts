@@ -2,11 +2,13 @@
  * Cloud provider tests — mock fetch, no network, no key.
  *
  * Covers the failure-policy contract (ADR-004 §2.1):
- *   - happy path parses content/usage/id, engine="cloud";
+ *   - happy path parses content/usage/id, engine="cloud" (JSON + SSE);
  *   - response_format 4xx → retried once WITHOUT JSON mode;
  *   - finish_reason "length" → the SAME hard truncation error as local;
  *   - 429 honors Retry-After then succeeds;
  *   - terminal 401 → immediate fail-loud error, no retry storm;
+ *   - SSE: deltas accumulate, length truncates, error events fail loud,
+ *     mid-stream transport failure retries (never silent truncation);
  *   - reasoning_content is stripped (never concatenated into content);
  *   - routing: explicit cloud pin + auto-route engine selection;
  *   - no key + cloud requested = fail-loud (the fail-open trap, closed).
@@ -92,6 +94,7 @@ test("cloud happy path: content, usage, engine, response id", async () => {
   const body = JSON.parse(String(chatCall.init.body));
   assert.equal(body.model, "test-model-1");
   assert.equal(body.temperature, 0);
+  assert.equal(body.stream, true, "cloud calls always request streaming");
   assert.deepEqual(body.response_format, { type: "json_object" });
   // Authorization header carries the key; it must not leak into errors/logs.
   assert.equal(
@@ -182,6 +185,77 @@ test("429 honors Retry-After then succeeds (single retry)", async () => {
   };
   const out = await generate("hello", { stage: "analyst" });
   assert.equal(out.engine, "cloud");
+  assert.equal(chatCalls, 2);
+});
+
+// ---- SSE streaming protocol (measured-live Gemini path) ----------------
+
+function sseResponse(frames: string[], extraHeaders: Record<string, string> = {}): Response {
+  const body = frames
+    .map((f) => (f === "[DONE]" ? "data: [DONE]\n\n" : `data: ${f}\n\n`))
+    .join("");
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream", ...extraHeaders },
+  });
+}
+
+function chunk(content: string, opts: Record<string, unknown> = {}): string {
+  return JSON.stringify({ choices: [{ delta: { content }, ...opts }] });
+}
+
+test("SSE stream accumulates deltas into the standard result shape", async () => {
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    return sseResponse([
+      chunk('{"frag"'),
+      chunk(':"done"}', { finish_reason: "stop" }),
+      "[DONE]",
+    ]);
+  };
+  const out = await generate("hello", { stage: "analyst" });
+  assert.equal(out.engine, "cloud");
+  assert.equal(out.content, '{"frag":"done"}');
+});
+
+test("SSE finish_reason=length maps to the hard truncation error", async () => {
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    return sseResponse([chunk("half an answer", { finish_reason: "length" }), "[DONE]"]);
+  };
+  await assert.rejects(generate("hello", { stage: "analyst" }), /finish_reason=length/);
+});
+
+test("SSE error event fails loud with the provider message", async () => {
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    return sseResponse([JSON.stringify({ error: { message: "quota exceeded mid-stream" } })]);
+  };
+  await assert.rejects(generate("hello", { stage: "analyst" }), /quota exceeded mid-stream/);
+});
+
+test("SSE transport failure mid-stream retries then succeeds", async () => {
+  let chatCalls = 0;
+  responder = (url) => {
+    if (url.endsWith("/models")) return modelsResponse(["test-model-1"]);
+    chatCalls++;
+    if (chatCalls === 1) {
+      // Body errors while the client is still reading the stream.
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`data: ${chunk("partial")}\n\n`));
+          controller.error(new Error("socket hang up"));
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return sseResponse([chunk('{"ok":true}', { finish_reason: "stop" }), "[DONE]"]);
+  };
+  const out = await generate("hello", { stage: "analyst" });
+  assert.equal(out.content, '{"ok":true}');
   assert.equal(chatCalls, 2);
 });
 

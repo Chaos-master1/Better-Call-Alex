@@ -573,7 +573,10 @@ Claim: "${claim}"
 Rule relied on: "${analyst.irac.rule}"
 Requirements: 2-6 terms total; use established doctrine phrases (e.g. "qualified immunity", "duty to warn", "public necessity exception") plus at most two other key terms; single spaces; NOT a sentence; no question mark; no quotes.
 Output only the query.`,
-    { maxTokens: 60 }
+    // 60 truncated live under the cloud tier (finish_reason=length): a
+    // reasoning model spends completion budget on scratch before the one
+    // line we want, so the cap must leave reasoning headroom.
+    { maxTokens: 300 }
   );
   const raw = r.content.trim().split("\n")[0].slice(0, 200).trim();
   // P2: validate — empty / natural-language question → fallback template
@@ -594,17 +597,74 @@ Output only the query.`,
 // helpers
 // =====================================================================
 
-function parseJson<T>(raw: string, tag: string): T {
+/**
+ * The single JSON boundary for every agent output. Strict first; on
+ * failure, fence-strip then the control-char repair (see below). Throws
+ * loud with a 200-char prefix when the payload is unrecoverable.
+ */
+export function parseJson<T>(raw: string, tag: string): T {
   // The model occasionally wraps JSON in prose fences. Strip them.
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   const body = fence ? fence[1] : raw;
   try {
     return JSON.parse(body) as T;
-  } catch (e) {
+  } catch (e: any) {
+    // Gemini's OpenAI-compat mode sometimes emits RAW control characters
+    // (literal newlines/tabs) inside JSON string values despite
+    // response_format:json_object — strict JSON.parse rejects the whole
+    // payload (live g3-03, 2026-09-24). One deterministic repair pass:
+    // escape control chars that appear INSIDE string literals only. If
+    // the result still fails to parse, throw the loud error below —
+    // never accept a payload we could not actually repair.
+    const repaired = escapeControlCharsInStrings(body);
+    if (repaired !== body) {
+      try {
+        return JSON.parse(repaired) as T;
+      } catch {
+        // fall through to the loud error below
+      }
+    }
+    // Position-prefixed error: "at char 4123 (…)" makes a live failure
+    // diagnosable from the log alone instead of a guessing game.
+    const pos =
+      typeof e?.message === "string" ? (e.message.match(/position (\d+)/)?.[1] ?? "") : "";
+    const at = pos
+      ? ` at char ${pos} (…${JSON.stringify(body.slice(Math.max(0, Number(pos) - 40), Number(pos))).slice(1, -1)})`
+      : "";
     throw new Error(
-      `[${tag} agent] model returned non-JSON. First 200 chars: ${raw.slice(0, 200)}`
+      `[${tag} agent] model returned non-JSON${at}. First 200 chars: ${raw.slice(0, 200)}`
     );
   }
+}
+/** Escape raw control characters (\n \r \t) occurring inside JSON string
+ *  literals. Tracks in-string state with backslash-escape awareness, so
+ *  structural newlines BETWEEN tokens are left untouched. */
+function escapeControlCharsInStrings(s: string): string {
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr && c === "\\") {
+      out += c + (s[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inStr = !inStr;
+      out += c;
+      continue;
+    }
+    if (inStr && c === "\n") {
+      out += "\\n";
+    } else if (inStr && c === "\r") {
+      out += "\\r";
+    } else if (inStr && c === "\t") {
+      out += "\\t";
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 interface AgentTaggedSentence {

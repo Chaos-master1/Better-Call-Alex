@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-23T19:53:19.687Z",
+  "generated_at": "2026-09-24T18:08:29.618Z",
   "offline": true,
   "patterns": 6,
   "results": [
@@ -36,7 +36,7 @@
   ],
   "gate": {
     "verified_rate": null,
-    "baseline_rate": 0.6859504132231405,
+    "baseline_rate": 0.9008264462809917,
     "tolerance": 0.05,
     "regression": false
   },
