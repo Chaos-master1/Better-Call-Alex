@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-22T17:28:11.253Z",
+  "generated_at": "2026-09-23T19:53:19.687Z",
   "offline": true,
-  "patterns": 5,
+  "patterns": 6,
   "results": [
     {
       "id": "g3-01-motel-1983",
@@ -27,7 +27,18 @@
       "id": "g3-05-regulatory-taking",
       "status": "skipped-offline",
       "ms": 0
+    },
+    {
+      "id": "g3-06-chain-cites",
+      "status": "skipped-offline",
+      "ms": 0
     }
   ],
+  "gate": {
+    "verified_rate": null,
+    "baseline_rate": 0.6859504132231405,
+    "tolerance": 0.05,
+    "regression": false
+  },
   "overall": "pass"
 }

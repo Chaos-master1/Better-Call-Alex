@@ -205,6 +205,45 @@ test("an unresolved inline cite never backfills the pin field", () => {
   }
 });
 
+test("a verified LAW sentence with no checked quote discloses the paraphrase caveat", () => {
+  // Phase E paraphrase honesty: the gate checks cite resolution and quotes,
+  // not whether the proposition matches the source. A LAW sentence that
+  // passed on citations alone must say exactly that.
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here. (410 U.S. 113)",
+      },
+    ]);
+    assert.equal(sentences[0].verified, true);
+    assert.ok(
+      sentences[0].detail.some((d) => d.includes("paraphrase")),
+      `expected paraphrase caveat, got: ${JSON.stringify(sentences[0].detail)}`
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("a quote-checked LAW sentence carries no paraphrase caveat", () => {
+  // The caveat must appear ONLY where nothing beyond the cite was checked.
+  const db = pinCorpus();
+  try {
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: 'The doctrine says "some more words here" (410 U.S. 113).',
+      },
+    ]);
+    assert.equal(sentences[0].verified, true);
+    assert.ok(!sentences[0].detail.some((d) => d.includes("paraphrase")));
+  } finally {
+    db.close();
+  }
+});
+
 test("too-short RECORD cannot be judged and is kept", () => {
   const { sentences, retagged } = confineRecordSentences(
     [{ tag: "RECORD", text: "He objected." }],

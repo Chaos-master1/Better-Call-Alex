@@ -527,13 +527,18 @@ export function* analyzeCitationsAndQuotesGen(
     anchorsMemo.set(id, anchors);
     return anchors;
   }
-  /** Rung 3: attach pin_status to a RESOLVED case citation carrying a pin. */
+  /** Rung 3: attach pin_status to a RESOLVED case citation carrying a pin.
+   *  firstPage = the cited case's reporter first page (the full cite's own
+   *  page, or the antecedent's for short forms) — the pin trust gate in
+   *  pins.ts refuses to strike unless the anchors provably belong to this
+   *  reporter's pagination (first anchor == first page). */
   function* checkPinFor(
     citation: CitationCheck,
-    opinionId: number
+    opinionId: number,
+    firstPage: string | null
   ): Generator<void, void, void> {
     const anchors = yield* anchorsFor(opinionId);
-    const ps = checkPin(citation.cite_pin_raw ?? null, null, anchors);
+    const ps = checkPin(citation.cite_pin_raw ?? null, firstPage, anchors);
     if (ps === "pin_in_range" || ps === "pin_out_of_range" || ps === "pin_no_anchors") {
       citation.pin_status = ps;
     }
@@ -666,7 +671,7 @@ export function* analyzeCitationsAndQuotesGen(
           case_name: shortRes.case_name,
           inferred_treatment: treatmentLabels(auth?.flags),
         });
-        if (c.pin_cite) yield* checkPinFor(citations[citations.length - 1], shortRes.opinion_id);
+        if (c.pin_cite) yield* checkPinFor(citations[citations.length - 1], shortRes.opinion_id, lastFull?.page ?? null);
         resolvedChain.push(citations[citations.length - 1]);
         continue;
       }
@@ -763,7 +768,7 @@ export function* analyzeCitationsAndQuotesGen(
     // Rung 3: pin check rides the resolution — the anchors parse from the
     // (memoized) opinion text.
     if (c.pin_cite) {
-      yield* checkPinFor(citations[citations.length - 1], res.opinion_id);
+      yield* checkPinFor(citations[citations.length - 1], res.opinion_id, c.page);
     }
     // The antecedent for later short forms: only a RESOLVED, UNAMBIGUOUS
     // full cite can lend its identity to "at 351" / "Id." references.
@@ -784,8 +789,8 @@ export function* analyzeCitationsAndQuotesGen(
     const pinFollows = /^\s*\(/.test(text.slice(s.end));
     // Distinguish a wrong cite from a data gap: if the title exists but the
     // section doesn't, the miss is the cite; if the whole title is absent
-    // (this corpus loads eCFR only, no US Code), the corpus cannot judge
-    // the cite and says so instead of implying the cite is wrong.
+    // (e.g. a US Code title not yet ingested via `usc-govinfo`), the corpus
+    // cannot judge the cite and says so instead of implying the cite is wrong.
     const titleLoaded = row
       ? true
       : statuteTitleStmt

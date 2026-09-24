@@ -37,6 +37,13 @@ const BASELINE = path.join(REPO, "evals", "g3-baseline.json");
 const RATE_TOLERANCE = 0.05;
 
 const OFFLINE = process.argv.includes("--offline");
+// --only=g3-01,g3-02 runs a subset (targeted diagnosis). A partial run is not
+// full-scope evidence: it routes to the sidecar report and never trips the
+// verified-rate regression gate (the subset's rate is not comparable).
+const onlyIds = (process.argv.find((a) => a.startsWith("--only="))?.split("=")[1] ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 // Model-bound budget: historical runs on 12 GB host are 4–8 min per pattern
 // (cold load 22s 9b + 18s 14b + 5 LLM calls + verifier). The 60s demo target
 // is architecture-correct on a machine that holds the corpus working set;
@@ -87,6 +94,10 @@ async function main() {
         results.push({ id: p.id, status: "skipped-offline", ms: 0 });
         continue;
       }
+      if (onlyIds.length > 0 && !onlyIds.some((o) => p.id === o || p.id.startsWith(o + "-"))) {
+        results.push({ id: p.id, status: "skipped-only", ms: 0 });
+        continue;
+      }
       const facts = p.jurisdiction ? `[Jurisdiction: ${p.jurisdiction}] ${p.facts}` : p.facts;
       const t0 = performance.now();
       let out: Awaited<ReturnType<typeof runCase>>;
@@ -132,6 +143,24 @@ async function main() {
           // every sentence must have been verifier-gated: detail or verified flag
           if (s.tag === "LAW" && !s.verified && s.detail.length === 0) issues.push(`LAW sentence ${s.index} unverified but no detail (would be silent drop)`);
         }
+        // Unverified-citation census (Phase E): every verifier detail line for
+        // an unverified citation/quote lands in the report, so the dominant
+        // failure cause is diagnosable from the artifact itself — not from
+        // ad-hoc DB probes after the fact.
+        const unverified_citations: string[] = [];
+        for (const s of out.draft.sentences) {
+          if (s.verified) continue;
+          for (const d of s.detail) {
+            if (d.includes("→ unresolved_citation") || d.includes("→ out_of_corpus") ||
+                d.includes("→ unsupported_form") || d.includes("→ statute_not_loaded") ||
+                d.includes("→ quote_not_found") || d.includes("→ quote_wrong_case") ||
+                d.includes("→ pin ") || d.includes("no extractable citation") ||
+                d.includes("→ unverified")) {
+              unverified_citations.push(`s${s.index}[${s.tag}] ${d}`);
+            }
+          }
+        }
+
         if (p.expect.element_checklist_nonempty && out.analyst.element_checklist.length === 0) issues.push("element_checklist empty");
         if (p.expect.adversary_nonempty && out.adversary.counter_authority.length === 0 && !out.adversary.counter_argument.toLowerCase().includes("no authority")) {
           // adversary may legitimately have no retrieval hits for a narrow pattern; flag as low-confidence but not fail
@@ -157,6 +186,7 @@ async function main() {
           research_hits: out.research.hits.length,
           model: currentModel(),
           issues,
+          unverified_citations,
         };
         console.log(`  ${status.toUpperCase()}  ${summary.verified}/${summary.total} verified  overall=${summary.overall}  adversary=${summary.adversary_hits}  ${ms}ms`);
         if (issues.length) for (const it of issues) console.log(`    ! ${it}`);
@@ -199,6 +229,8 @@ async function main() {
       /* first live run establishes the floor */
     }
     const regression =
+      // A subset run's rate is not comparable to the full-scope baseline.
+      skipped === 0 &&
       verifiedRate != null && baseline != null && verifiedRate < baseline.rate - RATE_TOLERANCE;
     const report = {
       generated_at: new Date().toISOString(),

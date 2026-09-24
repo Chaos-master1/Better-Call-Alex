@@ -1,84 +1,107 @@
 {
-  "generated_at": "2026-09-23T16:01:46.330Z",
+  "generated_at": "2026-09-24T10:58:11.127Z",
   "offline": false,
   "patterns": 6,
   "results": [
     {
       "id": "g3-01-motel-1983",
       "status": "pass",
-      "ms": 400234,
+      "ms": 460434,
       "overall": "fail",
-      "verified": 8,
+      "verified": 12,
       "total": 17,
       "adversary_hits": 5,
       "research_hits": 24,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": [
+        "s9[INFERRED] quote 'suspicious person…' → quote_not_found",
+        "s11[INFERRED] quote 'suspicious person.…' → quote_not_found",
+        "s13[LAW] cite '258 F.3d 362' → unresolved_citation",
+        "s14[LAW] cite '578 F.3d 298' → unresolved_citation",
+        "s16[INFERRED] cite '258 F.3d 362' → unresolved_citation",
+        "s16[INFERRED] cite '578 F.3d 298' → unresolved_citation",
+        "s16[INFERRED] quote 'suspicious person…' → quote_not_found"
+      ]
     },
     {
       "id": "g3-02-terry-stop",
       "status": "pass",
-      "ms": 430859,
+      "ms": 478019,
       "overall": "fail",
-      "verified": 15,
-      "total": 23,
+      "verified": 20,
+      "total": 21,
       "adversary_hits": 5,
       "research_hits": 17,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": [
+        "s10[LAW] quote 'totality of the circumstances …' → quote_not_found"
+      ]
     },
     {
       "id": "g3-03-tarasoff",
       "status": "pass",
-      "ms": 388051,
+      "ms": 499955,
       "overall": "fail",
       "verified": 16,
       "total": 22,
       "adversary_hits": 5,
       "research_hits": 13,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": [
+        "s7[LAW] LAW sentence with no extractable citation → unverified",
+        "s8[LAW] LAW sentence with no extractable citation → unverified",
+        "s9[LAW] LAW sentence with no extractable citation → unverified",
+        "s18[LAW] LAW sentence with no extractable citation → unverified",
+        "s19[LAW] LAW sentence with no extractable citation → unverified",
+        "s20[LAW] LAW sentence with no extractable citation → unverified"
+      ]
     },
     {
       "id": "g3-04-personal-jurisdiction",
       "status": "pass",
-      "ms": 1660707,
-      "overall": "fail",
-      "verified": 13,
-      "total": 24,
+      "ms": 490637,
+      "overall": "pass",
+      "verified": 26,
+      "total": 26,
       "adversary_hits": 5,
       "research_hits": 9,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-05-regulatory-taking",
       "status": "pass",
-      "ms": 329963,
-      "overall": "fail",
-      "verified": 14,
+      "ms": 397930,
+      "overall": "pass",
+      "verified": 15,
       "total": 15,
       "adversary_hits": 5,
       "research_hits": 24,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-06-chain-cites",
       "status": "pass",
-      "ms": 387341,
-      "overall": "fail",
-      "verified": 17,
+      "ms": 593315,
+      "overall": "pass",
+      "verified": 20,
       "total": 20,
       "adversary_hits": 5,
       "research_hits": 23,
       "model": "local:qwen3.5:9b",
-      "issues": []
+      "issues": [],
+      "unverified_citations": []
     }
   ],
   "gate": {
-    "verified_rate": 0.6859504132231405,
-    "baseline_rate": 0.660377358490566,
+    "verified_rate": 0.9008264462809917,
+    "baseline_rate": 0.6859504132231405,
     "tolerance": 0.05,
     "regression": false
   },

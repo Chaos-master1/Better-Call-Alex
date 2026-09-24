@@ -205,6 +205,15 @@ function crossReference(
     if (cits.some((c) => c.pin_status === "pin_out_of_range")) {
       verified = false;
     }
+    // Paraphrase honesty (Phase E): a [LAW] sentence can cite a real case
+    // and still misstate its holding — the gate checks cite resolution and
+    // quotes, not whether the proposition matches the source. A LAW
+    // sentence that passed on citations alone (no quote was extracted and
+    // checked) says so. Surfaced like AMBIGUITY, not struck: the citations
+    // ARE verified; the caveat tells the user exactly what was not.
+    if (s.tag === "LAW" && cits.length > 0 && quotes.length === 0 && verified) {
+      detail.push("paraphrase — holding not quote-checked");
+    }
     // [LAW] must carry CHECKED authority. §5.3 + §5.1. The pin may arrive
     // via the dedicated field (local JSON tier) or inline as a parenthetical
     // the extractor saw (cloud prose tier, e.g. "(392 U.S. 1, 27)"); what

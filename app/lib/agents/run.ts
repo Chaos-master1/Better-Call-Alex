@@ -51,6 +51,11 @@ import {
   type TaggedSentence,
 } from "../render.js";
 import { draftDocument, type DraftDoc } from "../draft.js";
+import {
+  repairStruckSentences,
+  applyRepairs,
+  type RepairEvidence,
+} from "./repair.js";
 import { buildVerificationCertificate } from "../certificate.js";
 import { openCorpus } from "../db.js";
 
@@ -95,6 +100,15 @@ export interface RunOptions {
    *  only runs in the cloud transform). The audit records counts only. */
   redactParties?: string[];
 }
+
+/**
+ * Phase E2 verify-then-revise guards. A repair is accepted only when it
+ * verifies at least MIN_REPAIR_GAIN above the original verified-vs-total
+ * rate; the [LAW] count may not shrink by more than the tolerance (no
+ * gaming the rate by writing less law).
+ */
+const MIN_REPAIR_GAIN = 0.05;
+const REPAIR_MAX_LAW_SHRINK = 0.2;
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -210,15 +224,95 @@ export async function runCase(
     ];
     // RECORD confinement runs here for the audit count AND inside the
     // verify fns (idempotent second pass) so the gate holds for all
-    // callers, not just this orchestrator.
+    // callers, not just this orchestrator. `let` because the E2 repair
+    // pass may replace sentences and re-confine.
     const intakeFacts = [...intake.facts, ...intake.claims].join(" ");
-    const { sentences: confined, retagged } = confineRecordSentences(combined, intakeFacts);
-    // Use async bridge when an event loop is present (server); fall back to sync
-    // for the CLI where top-level await is not needed. The sync path is still
-    // the canonical one for evals; this path just avoids blocking.
-    const draft = process.env.ALEX_VERIFY_SYNC === "1"
+    const confinedInit = confineRecordSentences(combined, intakeFacts);
+    let confined: TaggedSentence[] = confinedInit.sentences;
+    const retagged = confinedInit.retagged;
+    // Phase E2: verify-then-revise — the ONE bounded repair pass behind
+    // the fail-closed gate. The drafter sees its own struck sentences + the
+    // retrieval evidence and must repair, weaken, or drop each one.
+    // Accepted only when the guards hold; the gate never gets weaker for
+    // trying (a failed repair leaves the original draft standing).
+    const draft0 = process.env.ALEX_VERIFY_SYNC === "1"
       ? verifyTaggedSentences(corpus, confined, intakeFacts)
       : await verifyTaggedSentencesAsync(corpus, confined, intakeFacts);
+    let draft = draft0;
+
+    const repairEvidence: RepairEvidence[] = research.hits.map((h) => ({
+      case_name: h.case_name,
+      ...(h.cites && h.cites.length > 0 ? { canonical_cites: h.cites } : {}),
+      passages: h.passages.map((p) => p.text),
+    }));
+    const before = {
+      law: draft0.sentences.filter((s) => s.tag === "LAW").length,
+      verified: draft0.sentences.filter((s) => s.verified).length,
+      total: draft0.sentences.length,
+    };
+    // Pin the repair stage on the engine seam BEFORE the call (auto mode
+    // routes on the active stage) and swap to 14b only when there is
+    // something to repair — an idle swap costs the VRAM budget for nothing.
+    const hasStruck =
+      before.verified < before.total && repairEvidence.length > 0;
+    if (hasStruck) {
+      const repairEngine = await useEngine("auto", "repair");
+      await useModel(ANALYST_MODEL);
+      let repair: Awaited<ReturnType<typeof repairStruckSentences>>;
+      try {
+        repair = await repairStruckSentences(draft0, repairEvidence, intake);
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") throw err;
+        // Repair is never critical (§11): any failure — including a
+        // malformed model answer — leaves the verified original standing.
+        audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: `repair failed: ${(err as Error)?.message ?? String(err)}` }, caseId);
+        repair = null;
+      }
+      if (repair) {
+        throwIfAborted(opts.signal);
+        const repairedList = applyRepairs(confined, repair);
+        const { sentences: repairedConfined } = confineRecordSentences(repairedList, intakeFacts);
+        const redraft = process.env.ALEX_VERIFY_SYNC === "1"
+          ? verifyTaggedSentences(corpus, repairedConfined, intakeFacts)
+          : await verifyTaggedSentencesAsync(corpus, repairedConfined, intakeFacts);
+        const after = {
+          law: redraft.sentences.filter((s) => s.tag === "LAW").length,
+          verified: redraft.sentences.filter((s) => s.verified).length,
+          total: redraft.sentences.length,
+        };
+        const originalRate = before.total > 0 ? before.verified / before.total : 0;
+        const repairedRate = after.total > 0 ? after.verified / after.total : 0;
+        const lawShrink = before.law > 0 ? (before.law - after.law) / before.law : 0;
+        const accepted =
+          repairedRate >= originalRate + MIN_REPAIR_GAIN &&
+          lawShrink <= REPAIR_MAX_LAW_SHRINK;
+        audit(appDb, "verifier.repair", {
+          caseId,
+          flagged: before.total - before.verified,
+          repaired: repair.repaired_count,
+          dropped: repair.replacements.length - repair.repaired_count,
+          verified_before: before.verified,
+          verified_after: after.verified,
+          total_before: before.total,
+          total_after: after.total,
+          law_before: before.law,
+          law_after: after.law,
+          accepted,
+        }, caseId);
+        if (accepted) {
+          confined = repairedConfined;
+          draft = redraft;
+        }
+        const repairModel = engineQualifiedModel(repairEngine, ANALYST_MODEL);
+        engines.push({ stage: "repair", engine: repairEngine, model: repairModel });
+        audit(appDb, "agent.repair", { caseId, engine: repairEngine, model: repairModel, accepted }, caseId);
+      } else {
+        audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: "repair declined or empty" }, caseId);
+      }
+    } else {
+      audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: "no struck sentences" }, caseId);
+    }
+
     audit(appDb, "verifier.run", {
       caseId,
       overall: draft.overall,

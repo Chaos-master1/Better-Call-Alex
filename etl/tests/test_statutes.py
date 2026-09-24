@@ -144,6 +144,95 @@ class TestUscLoadPath(unittest.TestCase):
         with self.assertRaises(SystemExit):
             statutes.zipfile_member(buf.getvalue())
 
+    def test_load_usc_file_stores_sections_from_disk_zip(self):
+        import os
+        fd, path = tempfile.mkstemp(suffix=".zip")
+        self.addCleanup(os.close, fd)
+        self.addCleanup(os.remove, path)
+        with open(path, "wb") as f:
+            f.write(self._zipped_fixture())
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(statutes.STATUTES_SCHEMA)
+        n = statutes.load_usc_file(conn, "42", path)
+        self.assertEqual(n, 2)
+        row = conn.execute(
+            "SELECT heading FROM statutes WHERE source='usc' AND title='42' AND section='1983'"
+        ).fetchone()
+        self.assertEqual(row[0], "Civil action for deprivation of rights")
+        conn.close()
+
+    def test_load_usc_file_missing_file_fails_fast(self):
+        conn = sqlite3.connect(":memory:")
+        with self.assertRaises(SystemExit):
+            statutes.load_usc_file(conn, "42", "/nonexistent/title.zip")
+        conn.close()
+
+
+class TestUscGovinfoPackage(unittest.TestCase):
+    """The govinfo USCODE package path: HTML granules keyed by the
+    documentid comment, loaded through load_usc_govinfo_file."""
+
+    GRANULE = b'''<html><head><title>U.S.C. Title 42</title></head><body>
+<span style="font-size:10pt">United States Code, 2023 Edition</span><br/>
+<!-- documentid:42_1983  usckey:420000000198300000000000000000000 currentthrough:20240103 documentPDFPage:5202 -->
+<!-- field-start:head -->
+<h3 class="section-head">&sect;1983. Civil action for deprivation of rights</h3>
+<!-- field-end:head -->
+<!-- field-start:statute -->
+<p class="statutory-body">Every person who, under color of any statute, subjects, or causes to be subjected, any citizen of the United States to the deprivation of any rights, shall be liable to the party injured.</p>
+<!-- field-end:statute -->
+<!-- field-start:sourcecredit -->
+<p class="source-credit">(R.S. &sect;1979.)</p>
+<!-- field-end:sourcecredit -->
+</body></html>'''
+
+    CHAPTER = b'''<html><head><title>chapter</title></head><body>
+<!-- documentid:42_-ch21  usckey:42x -->
+<h2>CHAPTER 21 - CIVIL RIGHTS</h2>
+</body></html>'''
+
+    def _pkg(self):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("USCODE-2023-title42/html/USCODE-2023-title42-chap21-subchapI-sec1983.htm",
+                        self.GRANULE)
+            zf.writestr("USCODE-2023-title42/html/USCODE-2023-title42-chap21.htm",
+                        self.CHAPTER)
+            zf.writestr("USCODE-2023-title42/pdf/USCODE-2023-title42-chap21-subchapI-sec1983.pdf",
+                        b"%PDF-not-parsed")
+        return buf.getvalue()
+
+    def test_granule_parses_with_documentid_key(self):
+        r = statutes.parse_usc_govinfo_granule(self.GRANULE)
+        self.assertIsNotNone(r)
+        self.assertEqual(r["num"], "1983")
+        self.assertEqual(r["heading"], "Civil action for deprivation of rights")
+        self.assertIn("Every person who, under color of any statute", r["text"])
+        self.assertIn("(R.S. \u00a71979.)", r["text"])  # source credit rides in text
+
+    def test_container_granule_is_skipped(self):
+        self.assertIsNone(statutes.parse_usc_govinfo_granule(self.CHAPTER))
+        self.assertIsNone(statutes.parse_usc_govinfo_granule(b"<html><body>no comment</body></html>"))
+
+    def test_load_package_stores_sections_and_skips_containers(self):
+        import os
+        fd, path = tempfile.mkstemp(suffix=".zip")
+        self.addCleanup(os.close, fd)
+        self.addCleanup(os.remove, path)
+        with open(path, "wb") as f:
+            f.write(self._pkg())
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(statutes.STATUTES_SCHEMA)
+        n = statutes.load_usc_govinfo_file(conn, "42", path)
+        self.assertEqual(n, 1)  # chapter container + pdf skipped
+        row = conn.execute(
+            "SELECT heading, text FROM statutes WHERE source='usc' AND title='42' AND section='1983'"
+        ).fetchone()
+        self.assertEqual(row[0], "Civil action for deprivation of rights")
+        conn.close()
+
 
 class TestFetchGuards(unittest.TestCase):
     def test_redirect_is_refused_loudly(self):

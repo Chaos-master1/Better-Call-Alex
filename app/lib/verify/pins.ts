@@ -50,6 +50,16 @@ export type PinStatus =
 /**
  * Check a pin page against an opinion's star anchors.
  *
+ * Trust gate (Phase E, live-census evidence 2026-09-23): star pagination
+ * starts at the opinion's FIRST page only when the corpus text is complete
+ * and the anchors are in the cited reporter's own numbering. Measured
+ * counter-examples: a record whose anchors run 409–428 for a first page of
+ * 1868 (parallel-reporter pagination), records whose text was captured
+ * from a later page (anchors starting at 666 for first page 658), and
+ * junk single-anchor records. When the first anchor does not match the
+ * cited reporter's first page, the anchors cannot judge this pin: the
+ * status is `pin_unverified` (unjudgeable), never a strike.
+ *
  * @param pin raw pin string ("113", "113-114")
  * @param firstPage the reporter first page of the citation (anchor 0 base)
  */
@@ -64,8 +74,13 @@ export function checkPin(
   const page = Number(m[1]);
   if (!Number.isFinite(page)) return "pin_unverified";
   // Anchor pages are absolute reporter pages (star markers carry the
-  // reporter page number), so no first-page offset is needed.
-  void firstPage;
+  // reporter page number) — but ONLY when the pagination provably belongs
+  // to the cited reporter: the first star anchor must BE the opinion's
+  // first page. Anything else (parallel numbering, mid-opinion capture,
+  // OCR junk) cannot distinguish a wrong pin from wrong anchors, and the
+  // gate refuses to strike on evidence it does not trust.
+  const first = firstPage != null ? Number(firstPage) : NaN;
+  if (!Number.isFinite(first) || anchors[0].page !== first) return "pin_unverified";
   const min = anchors[0].page;
   const max = anchors[anchors.length - 1].page;
   if (page >= min && page <= max) return "pin_in_range";

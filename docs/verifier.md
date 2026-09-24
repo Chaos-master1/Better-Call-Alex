@@ -64,7 +64,24 @@ that fails to resolve still fails the draft (§5.1).
 
 Render gate (render.ts): a [LAW] sentence passes only with a pin cite
 that produced an extracted citation in its range — a pin the extractor
-saw nothing in (e.g. a bare number) fails closed, never vacuously.
+saw nothing in (a bare number) fails closed, never vacuously. A verified
+inline cite whose structured pin field the model dropped is BACKFILLED
+from the checked extraction (provenance, not a guess), and a [LAW]
+sentence that passed on citations alone (no quote was extracted and
+checked) carries the detail line "paraphrase — holding not quote-checked":
+the gate checks cite resolution and quotes, not whether the proposition
+matches the source, and the caveat says exactly what was not checked.
+
+Verify-then-revise (Phase E2, run.ts + lib/agents/repair.ts): behind the
+gate, ONE bounded repair pass lets the drafter answer its own strikes —
+repair the cite from the supplied canonical_cites, weaken to [INFERRED],
+or drop. The answer is EXACT JSON (one entry per flagged sentence, in
+order — nothing unflagged can be smuggled in), [LAW] entries must carry
+pin cites, and the repaired draft is re-verified and accepted ONLY when
+it verifies at least 5pt above the original rate and the [LAW] count
+shrank by ≤20% (no gaming the rate by writing less law). A failed or
+declined repair leaves the original draft standing; every attempt lands
+an audit row (`verifier.repair`, `agent.repair`).
 ```
 
 ## Quote-matching ladder (deliberately conservative)

@@ -577,11 +577,43 @@ test("pin outside the star-page span is pin_out_of_range", () => {
       pin_cite: "999",
       start: 0,
       end: 12,
-    };
-    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 999");
+    };    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 999");
     assert.equal(report.citations[0].status, "verified");
     assert.equal(report.citations[0].pin_status, "pin_out_of_range");
   } finally {
     db.close();
   }
 });
+
+test("anchors that do not start at the cited first page never strike a pin (trust gate)", () => {
+  // Live-census finding (2026-09-23, g3-04): the corpus text's star anchors
+  // ran 409–428 for a first page of 1868 — parallel/foreign pagination. A
+  // pin strike built on anchors that provably do not belong to the cited
+  // reporter's numbering is a FALSE strike; the gate must refuse.
+  const db = memoryCorpus();
+  try {
+    // Replace the well-formed anchors with mid-book pagination.
+    db.exec(`UPDATE opinions SET text = '*409 unrelated earlier matter *410 more' WHERE id = 1`);
+    db.exec(`UPDATE opinions_fts SET text = 'unrelated earlier matter more' WHERE rowid = 1`);
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "425",
+      start: 0,
+      end: 12,
+    };
+    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 425");
+    assert.equal(report.citations[0].status, "verified");
+    // NOT pin_out_of_range: the anchors cannot judge this pin, so no
+    // pin_status is attached at all (the sentence must NOT strike).
+    assert.equal(report.citations[0].pin_status, undefined);
+  } finally {
+    db.close();
+  }
+});
+
+

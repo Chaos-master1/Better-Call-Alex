@@ -26,9 +26,13 @@ statutes_fts   — external-content FTS5 over statutes(heading, text), porter un
   and parses the usc-md `<section>/<num>/<heading>/<content>` format,
   namespace-agnostically, carrying inline `<effective_date>` when present.
   **uscode.house.gov is unreachable from the development network** (connection
-  reset), so US Code ingestion is fixture-tested but not yet live-loaded;
-  run it from a host that reaches OLRC. eCFR — the source the gate names for
-  spot-checking — is live and verified.
+  reset), so `usc-title` cannot fetch here; `usc-file` loads a previously
+  downloaded OLRC zip through the identical parse path, and `usc-govinfo`
+  loads the official govinfo package (`USCODE-{year}-title{n}`, html
+  granules keyed by the per-section `documentid` comment — same statutory
+  text, per-section keys, streamed from the archive one granule at a
+  time). eCFR — the source the gate names for spot-checking — is live and
+  verified.
 
 Loaded as of 2026-08-31: title 37 (1,331 sections) + title 42 (7,290) =
 8,621 eCFR sections in ~6 s of fetch time.
@@ -75,16 +79,26 @@ short forms remain `unsupported_form` (v1 limitation — the title/code
 context they abbreviate is not tracked). When the statutes table has not
 been loaded, the verifier keeps its pre-G4 behavior exactly. This closes
 the dominant `unsupported_form` rejections for full-form statutory cites
-seen in the G3 live run.
+seen in the G3 live run.**Status (2026-09-24, superseded):** the 2026-09-23 note below is now
+historical — **the US Code is loaded** (govinfo package, official 2023
+edition): title 42's 8,044 sections joined the 8,621 eCFR sections, and
+`42 U.S.C. § 1983` — the census's signature unresolvable statute — now
+resolves and verifies end-to-end through the standard G4 path (exact-key
+on `(source,title,section)`), no code change needed, exactly as predicted.
+Unloaded titles still report `statute_not_loaded` (struck, draft not
+failed): the corpus cannot judge what it does not hold, and the annotation
+says so instead of implying the cite is wrong. A wrong section under a
+loaded title is still `unresolved_citation` and fails the draft.
 
-**Status nuance (2026-09-23):** the shipped corpus loads eCFR titles only
-— there is no US Code — so a valid cite like `42 U.S.C. § 1983` cannot
-resolve and is reported `statute_not_loaded` (struck, draft not failed):
-the corpus cannot judge it, and the annotation says so instead of
-implying the cite is wrong. A wrong section under a loaded title is
-still `unresolved_citation` and fails the draft. Loading the US Code
-into `statutes` would resolve the common federal cites with no code
-change.
+<details><summary>Historical note (2026-09-23)</summary>
+
+The shipped corpus loaded eCFR titles only — there was no US Code — so a
+valid cite like `42 U.S.C. § 1983` could not resolve and was reported
+`statute_not_loaded` (struck, draft not failed): the corpus could not
+judge it, and the annotation said so instead of implying the cite was
+wrong.
+
+</details>
 
 Lookup surfaces: `alex lookup "42 C.F.R. § 483.35"` and
 `GET /api/lookup?cite=...` resolve statutes after (not instead of) case
@@ -110,8 +124,8 @@ counter-authority for Roe's cluster (Dobbs-era citation graph).
 
 ## Known limitations (honest list)
 
-- US Code not yet live-loaded (network-blocked dev machine); until then,
-  U.S.C. cites resolve only after a US Code title is ingested.
+- US Code live-loaded for title 42 only (the § 1983 pattern-drafts' title);
+  other titles resolve after the same one-command `usc-govinfo` load.
 - Statutory subsection pins (`§ 1983(a)`) are annotated `pin_unverified`,
   consistent with the corpus having no star pagination; the subsection text
   is inside `statutes.text` and IS quote-checked.

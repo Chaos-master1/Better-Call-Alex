@@ -108,11 +108,10 @@ test("rejection: real Roe quote attributed to Katz (wrong case) fails", { skip: 
 test("§-variant statutory form still EXTRACTS as a citation", { skip: !HAS_DB }, () => {
   const db = openCorpus();
   try {
-    // G4 truth (CLAUDE.md §8): the US Code adapter is fixture-tested but
-    // NOT live-loaded on this network — so resolution is expected to fail
-    // here. What the cloud-formatting test proves is that the § form with
-    // variant spacing still EXTRACTS (eyecite sees it), landing in the
-    // honest unresolved state rather than vanishing.
+    // G4 truth: title 42 is live-loaded in the corpus (via `usc-govinfo`),
+    // so this § form with variant spacing both EXTRACTS (eyecite sees it)
+    // and RESOLVES — the assertion checks extraction, which is what the
+    // cloud-formatting test exists to prove.
     const text = ` Jurisdiction lies under 42 U.S.C. § 1983 .`;
     const report = verifyText(db, text);
     assert.ok(
