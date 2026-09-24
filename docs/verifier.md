@@ -161,8 +161,11 @@ The citator signal is split by proof grade:
   edge passes a negation veto ("never overruled" never poisons) AND the
   citing opinion postdates the cited one (impossible-treatment edges are
   date junk) AND the citing opinion is written. Only the overruled bit
-  from THIS table strikes (render.ts); it carries a real evidence edge,
-  so the strike is checkable in the detail line.
+  from THIS table strikes (render.ts); the detail line shows the flag's
+  label so the strike is checkable. The writer filter folds into the
+  scan (memoized PK lookup per citing opinion) and the rowid checkpoint
+  carries the aggregate, so an interrupted run resumes without state
+  loss.
 
 ### Support evidence (Phase F, `verify/support.ts`)
 

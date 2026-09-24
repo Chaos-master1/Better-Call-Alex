@@ -71,6 +71,11 @@ BIT = {
 #     sentence boundaries, so only the citation's own sentence counts.
 PROVEN_MIN_DATE_COVERAGE = 0.90
 
+# Opinion types whose text can PROVE treatment (the writer filter): the
+# majority/combined opinion is the court's act. Headnotes, dissents,
+# concurrences never strike another case.
+PROVEN_MAJORITY_TYPES = {"010combined"}
+
 NEGATION_RE = re.compile(
     r"(?:\b(?:not|never|no|nor|neither|without|hardly|scarcely)\b|n't)"
     r"[^.;]{0,60}?"
@@ -409,18 +414,24 @@ def proven_stage(conn, outdir=AUTH_DIR, out_csv=None):
     the stage refuses (fail loud) rather than build strikes on date junk
     (measured F1 audit: 13% date-bleed in the loose aggregate).
 
-    Writes treatment_proven(opinion_id PK, proven_flags, evidence_rowid) —
-    the ONLY signal the verifier may strike on (CLAUDE.md §5.5: only
-    provable claims gate the draft; authority.treatment_flags stays
-    annotation-only). evidence_rowid anchors one real citing edge for
-    verifier spot-checks.
+    Writes treatment_proven(opinion_id PK, proven_flags) — the ONLY signal
+    the verifier may strike on (CLAUDE.md §5.5: only provable claims gate
+    the draft; authority.treatment_flags stays annotation-only).
+
+    The writer filter folds into the scan (one memoized PK lookup per
+    qualifying citing opinion): the first version ran correlated subqueries
+    per candidate in the write phase — measured 30ms+/candidate on the live
+    corpus, i.e. hours. The checkpoint carries the aggregate, so a kill
+    mid-scan resumes without losing state (the first version stored only
+    the rowid and a restart silently rebuilt an empty table).
     """
     outdir = Path(outdir)
     ckpt = outdir / "proven.progress.json"
-    state = {"last_rowid": 0}
+    state = {"last_rowid": 0, "flags": {}}
     if ckpt.exists():
         state = json.loads(ckpt.read_text())
-        print(f"[proven] resuming at rowid>{state['last_rowid']:,}")
+        print(f"[proven] resuming at rowid>{state['last_rowid']:,} "
+              f"({len(state['flags']):,} candidates carried)")
 
     # Date reliability gate: sample citing edges deterministically
     # (every 7th rowid, plus the first 1000 so small tables sample fully),
@@ -447,12 +458,14 @@ def proven_stage(conn, outdir=AUTH_DIR, out_csv=None):
 
     ids, dates = load_opinions(conn)
     id_index = {int(v): i for i, v in enumerate(ids.tolist())}
-    flags = {}  # cited_id -> bitfield (candidate, pre writer-filter)
+    flags = {int(k): int(v) for k, v in state["flags"].items()}
+    majority_memo: dict[int, bool] = {}
     tick = progress_logger("proven", every=5_000_000)
     t0 = time.time()
     cur = conn.execute(
         "SELECT rowid, citing_id, cited_id, context FROM cites WHERE rowid > ?",
         (state["last_rowid"],))
+    scanned_since_ckpt = 0
     while True:
         rows = cur.fetchmany(200_000)
         if not rows:
@@ -470,78 +483,56 @@ def proven_stage(conn, outdir=AUTH_DIR, out_csv=None):
             di, dj = int(dates[i]), int(dates[j])
             if di == 0 or dj == 0 or di < dj:
                 continue  # date guard (unknown dates never prove)
+            mj = majority_memo.get(citing)
+            if mj is None:
+                row = conn.execute(
+                    "SELECT type FROM opinions WHERE id = ?", (citing,)).fetchone()
+                mj = bool(row and row[0] in PROVEN_MAJORITY_TYPES)
+                majority_memo[citing] = mj
+            if not mj:
+                continue  # writer filter: headnotes/dissents never prove
             flags[cited] = flags.get(cited, 0) | b
         state["last_rowid"] = max_rowid
-        ckpt.write_text(json.dumps(state))
+        scanned_since_ckpt += len(rows)
+        if scanned_since_ckpt >= 5_000_000:
+            # Checkpoint WITH the aggregate: resume cannot lose the scan.
+            state["flags"] = {str(k): v for k, v in flags.items()}
+            ckpt.write_text(json.dumps(state))
+            scanned_since_ckpt = 0
         tick(len(rows))
 
     print(f"[proven] scanned cites in {(time.time()-t0)/60:.1f} min; "
-          f"{len(flags):,} candidate opinions; applying writer filter")
+          f"{len(flags):,} flagged opinions; writing (bulk)")
+    ckpt.unlink(missing_ok=True)  # scan+aggregate complete — resume state spent
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("DROP TABLE IF EXISTS treatment_proven")
     conn.execute("""
         CREATE TABLE treatment_proven (
             opinion_id INTEGER PRIMARY KEY,
-            proven_flags INTEGER NOT NULL,
-            evidence_rowid INTEGER
+            proven_flags INTEGER NOT NULL
         )
     """)
+    conn.executemany(
+        "INSERT OR REPLACE INTO treatment_proven (opinion_id, proven_flags) VALUES (?, ?)",
+        sorted(flags.items()))
     conn.execute("CREATE INDEX idx_treatment_proven_flags ON treatment_proven(proven_flags)")
-    conn.execute("DROP TABLE IF EXISTS _proven")
-    conn.execute("CREATE TEMP TABLE _proven (opinion_id INTEGER PRIMARY KEY, flags INTEGER)")
-    batch = []
-    for oid, b in sorted(flags.items()):
-        batch.append((oid, b))
-        if len(batch) >= 100_000:
-            conn.executemany("INSERT OR REPLACE INTO _proven VALUES (?, ?)", batch)
-            batch.clear()
-    if batch:
-        conn.executemany("INSERT OR REPLACE INTO _proven VALUES (?, ?)", batch)
-    # Writer filter + evidence anchor in one INSERT: keep only cited
-    # opinions with a qualifying citing edge whose citing text is a
-    # majority/combined opinion; store ONE evidence edge (latest citing
-    # date) per cited opinion for verifier spot-checks.
-    conn.execute("""
-        INSERT INTO treatment_proven (opinion_id, proven_flags, evidence_rowid)
-        SELECT p.opinion_id, p.flags,
-               (SELECT ct.rowid FROM cites ct
-                JOIN opinions ci ON ci.id = ct.citing_id
-                WHERE ct.cited_id = p.opinion_id AND ct.context IS NOT NULL
-                ORDER BY ci.date_filed DESC LIMIT 1)
-        FROM _proven p
-        WHERE EXISTS (
-            SELECT 1 FROM cites ct
-            JOIN opinions ci ON ci.id = ct.citing_id
-            WHERE ct.cited_id = p.opinion_id
-              AND ct.context IS NOT NULL
-              AND ci.type IN ('010combined')
-        )
-    """)
-    conn.execute("DROP TABLE _proven")
     conn.commit()
-    np.savez_compressed(outdir / "treatment_proven.npz",
-                        ids=np.asarray(sorted(flags), dtype=np.int64),
-                        vals=np.asarray([flags[k] for k in sorted(flags)],
-                                        dtype=np.int32))
     if out_csv:
         with open(out_csv, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["opinion_id", "proven_flags", "evidence_rowid"])
+            w.writerow(["opinion_id", "proven_flags"])
             for row in conn.execute(
-                    "SELECT opinion_id, proven_flags, evidence_rowid FROM treatment_proven"):
+                    "SELECT opinion_id, proven_flags FROM treatment_proven"):
                 w.writerow(row)
         print(f"[proven] csv snapshot -> {out_csv}")
 
     n_flag = conn.execute("SELECT count(*) FROM treatment_proven").fetchone()[0]
     n_ovr = conn.execute(
         "SELECT count(*) FROM treatment_proven WHERE proven_flags & 1 = 1").fetchone()[0]
-    n_ev = conn.execute(
-        "SELECT count(*) FROM treatment_proven WHERE evidence_rowid IS NOT NULL").fetchone()[0]
     summary = {
         "proven_flagged_total": int(n_flag),
         "proven_overruled_family": int(n_ovr),
-        "proven_with_evidence_edge": int(n_ev),
         "date_coverage_probe": [usable, len(probe)],
         "minutes": round((time.time() - t0) / 60, 1),
     }
