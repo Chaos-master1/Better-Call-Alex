@@ -7,6 +7,7 @@
  */
 
 import type { RenderedDraft } from "./render.js";
+import { TREATMENT_LABELS } from "./verify/core.js";
 import type { IntakeOutput, AnalystOutput, AdversaryOutput, ResearcherOutput } from "./agents/index.js";
 import type { VerificationCertificate } from "./certificate.js";
 import { IRAC_MARKER, COUNTER_ARGUMENT_MARKER, ANY_MARKER, iracFieldOf } from "./markers.js";
@@ -48,6 +49,11 @@ export interface DraftDoc {
     case_name: string | null;
     verified: boolean;
     inferred_treatment: string[];
+    /** F1 good-law: strike-grade proven signal (same labels; from the
+     *  strict treatment_proven table). Overruled-family proven signal is
+     *  surfaced as a hard warning in UI/DOCX — the sentence strike itself
+     *  happens in render. */
+    proven_treatment?: string[];
     /** citation maps to >1 cluster — the cite alone is not unique */
     ambiguous?: boolean;
   }>;
@@ -117,6 +123,10 @@ export function draftDocument(
       case_name: c.case_name ?? null,
       verified: c.status === "verified",
       inferred_treatment: c.inferred_treatment ?? [],
+      proven_treatment:
+        c.proven_treatment != null
+          ? TREATMENT_LABELS.filter((t) => c.proven_treatment! & t.bit).map((t) => t.label)
+          : undefined,
       ambiguous: (c.ambiguous_cluster_ids?.length ?? 0) > 1,
     }));
 

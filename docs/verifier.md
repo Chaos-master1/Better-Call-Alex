@@ -134,6 +134,9 @@ never depends on identification.
 | treatment-language recall | **0.774** (941/1216) | LegalBench `overruling` test split — see note below |
 | treatment-language false-positive rate | **0.014** (16/1178) | same |
 | scanner extension delta | recall .525→.774, FPR .011→.014 | `disapprov*`, `supersed*`, `depart* from`, `no longer good law/controlling/followed/valid`; `reject` tested and excluded (+2pp recall for +1.3pp FPR) |
+| pin false-strike elimination | trust gate: anchors trusted only when the first matches the reporter's first page | Phase E (core.ts `checkPinFor`) |
+| G3 live verified rate | **90.1%** (109/121, 6 patterns) | Phase E proof run, `logs/g3-report.json` |
+| support evidence (F2) | advisory passage surfacing per verified cite — pin-window anchored; divergent windows flagged `pin_unsupported`, never struck | Phase F, `verify/support.ts` |
 | unit tests | green (`pnpm test` + `unittest`; counts move — see test files, not this table) | |
 
 > **Reading the .774 honestly:** the measurement counts *any*
@@ -146,6 +149,30 @@ never depends on identification.
 Corpus treatment flags rebuilt with the extended scanner via
 `uv run python etl/build_authority.py reflag` (updates only
 `authority.treatment_flags`; edges/pagerank untouched).
+
+### Good-law treatment, two grades (Phase F)
+
+The citator signal is split by proof grade:
+
+- **`authority.treatment_flags` (aggregate)** — the LegalBench-scored
+  scanner over citing-edge context. Annotation-only everywhere.
+- **`treatment_proven` (strict, ETL `proven` stage)** — a flag lands here
+  only when the citing context contains overrule-family language AND the
+  edge passes a negation veto ("never overruled" never poisons) AND the
+  citing opinion postdates the cited one (impossible-treatment edges are
+  date junk) AND the citing opinion is written. Only the overruled bit
+  from THIS table strikes (render.ts); it carries a real evidence edge,
+  so the strike is checkable in the detail line.
+
+### Support evidence (Phase F, `verify/support.ts`)
+
+Every verified citation gets its backing passage surfaced: pin-window
+anchored via star anchors (the window for the pinned page), opening span
+otherwise. Advisory only — a pinned window sharing <25% content-word
+overlap with the sentence is flagged `pin_unsupported` ("verify the
+proposition yourself"); a window that cannot be located stays silent
+(unjudgeable ≠ unsupported). This layer never gates: verification
+remains citations + quotes; supports are the "show me the text" layer.
 
 ## Honest limitations
 

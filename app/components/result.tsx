@@ -398,6 +398,12 @@ export function ResultDashboard({ out }: { out: RunResponse }) {
                 {a.case_name ?? "—"}{" "}
                 {!a.verified && <span className="unres">unresolved</span>}
                 {a.ambiguous && <span className="unres"> · AMBIGUOUS</span>}
+                {a.proven_treatment && a.proven_treatment.length > 0 && (
+                  <span className="unres">
+                    {" "}
+                    · PROVEN: {a.proven_treatment.join(", ")}
+                  </span>
+                )}
                 {a.inferred_treatment.length > 0 && (
                   <span className="unres">
                     {" "}

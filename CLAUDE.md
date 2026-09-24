@@ -331,7 +331,7 @@ verifier/              G2 runtime Python: eyecite subprocess bridge (ADR-001),
 app/                   Next.js + TypeScript
   cli.ts               alex lookup / search / run
   lib/db.ts  lib/statute.ts (G4)  lib/llm.ts  lib/app_db.ts
-  lib/retrieval/  lib/verify/ (core.ts + sync/async bridges + pins.ts)  lib/agents/
+  lib/retrieval/  lib/verify/ (core.ts + sync/async bridges + pins.ts + support.ts)  lib/agents/
   lib/calc/  lib/draft.ts  lib/render.ts  lib/agents/repair.ts (verify-then-revise)
   app/                 routes, page, error boundary
 evals/                 golden sets + runners (retrieval p@10, latency, G2

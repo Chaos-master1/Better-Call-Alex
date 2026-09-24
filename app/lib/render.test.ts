@@ -168,6 +168,54 @@ test("a pin inside the span keeps the sentence verified", () => {
   }
 });
 
+// ——— F1 good-law: PROVEN treatment strikes / warns ———
+
+test("proven overruled treatment strikes the citing sentence (fail-closed)", () => {
+  const db = pinCorpus();
+  try {
+    db.exec(
+      `CREATE TABLE treatment_proven (opinion_id INTEGER PRIMARY KEY, proven_flags INTEGER NOT NULL, evidence_rowid INTEGER)`
+    );
+    db.exec(`INSERT INTO treatment_proven VALUES (1, 1, NULL)`); // overruled family
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here. (410 U.S. 113)",
+      },
+    ]);
+    assert.equal(sentences[0].verified, false);
+    assert.ok(
+      sentences[0].detail.some((d) => d.includes("PROVEN OVERRULED")),
+      `expected proven-overruled detail, got: ${JSON.stringify(sentences[0].detail)}`
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("proven questioned-family treatment warns without striking", () => {
+  const db = pinCorpus();
+  try {
+    db.exec(
+      `CREATE TABLE treatment_proven (opinion_id INTEGER PRIMARY KEY, proven_flags INTEGER NOT NULL, evidence_rowid INTEGER)`
+    );
+    db.exec(`INSERT INTO treatment_proven VALUES (1, 4, NULL)`); // distinguished
+    const { sentences } = verifyTaggedSentences(db, [
+      {
+        tag: "LAW",
+        text: "The doctrine protects some more words here. (410 U.S. 113)",
+      },
+    ]);
+    assert.equal(sentences[0].verified, true);
+    assert.ok(
+      sentences[0].detail.some((d) => d.includes("treated distinguished")),
+      `expected treatment warning, got: ${JSON.stringify(sentences[0].detail)}`
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("verified inline cite backfills a dropped pin_cite field (provenance, not guess)", () => {
   // g3 live run 2026-09-23 (tarasoff): the model verified an inline cite
   // but omitted the structured field — the harness rightly flagged it.

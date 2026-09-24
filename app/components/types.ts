@@ -79,7 +79,7 @@ export interface RunResponse {
     banner: string;
     title: string;
     caption: string;
-    authority_appendix: Array<{ citation: string; case_name: string | null; verified: boolean; inferred_treatment: string[]; ambiguous?: boolean }>;
+    authority_appendix: Array<{ citation: string; case_name: string | null; verified: boolean; inferred_treatment: string[]; proven_treatment?: string[]; ambiguous?: boolean }>;
     verification: {
       overall: string;
       summary: Record<string, number>;
@@ -161,7 +161,8 @@ export function draftToText(out: RunResponse): string {
     const treat = a.inferred_treatment?.length
       ? ` [inferred: ${a.inferred_treatment.join(", ")}]`
       : "";
-    lines.push(`- ${a.citation} (${a.case_name ?? "—"})${a.verified ? "" : " UNVERIFIED"}${treat}`);
+    const proven = a.proven_treatment?.length ? ` [PROVEN: ${a.proven_treatment.join(", ")}]` : "";
+    lines.push(`- ${a.citation} (${a.case_name ?? "—"})${a.verified ? "" : " UNVERIFIED"}${proven}${treat}`);
   }
   lines.push("");
   lines.push(

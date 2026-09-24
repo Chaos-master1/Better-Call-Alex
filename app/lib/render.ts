@@ -28,7 +28,7 @@
  */
 import { verifyText, type VerificationReport } from "./verify/verify.js";
 import { verifyTextAsync } from "./verify/verify_async.js";
-import type { AnalyzeOptions } from "./verify/core.js";
+import { TREATMENT_LABELS, type AnalyzeOptions } from "./verify/core.js";
 import type Database from "better-sqlite3";
 
 export type ClaimTag = "RECORD" | "LAW" | "INFERRED";
@@ -169,6 +169,21 @@ function crossReference(
     let verified = true;
     for (const c of cits) {
       detail.push(`cite '${c.citation_text}' → ${c.status}`);
+      // F1 good-law: PROVEN negative treatment strikes the sentence —
+      // fail-closed (§5.5): citing overruled authority is exactly the
+      // defect the verifier exists to catch. The provenance anchor rides
+      // in the detail so the user can check the strike (treatment_proven
+      // carries a real evidence edge). Lesser signals (questioned family:
+      // distinguished/but-see/declined) surface as honest warnings, never
+      // strikes — the loose aggregate (inferred_treatment) stays
+      // annotation-only everywhere else.
+      if (c.proven_treatment != null && c.proven_treatment & 1) {
+        detail.push(`cite '${c.citation_text}' → PROVEN OVERRULED — later controlling authority overruled/abrogated this case (fail-closed)`);
+        verified = false;
+      } else if (c.proven_treatment != null && (c.proven_treatment & 0b11110)) {
+        const labels = TREATMENT_LABELS.filter((t) => c.proven_treatment! & t.bit).map((t) => t.label);
+        detail.push(`cite '${c.citation_text}' → treated ${labels.join(", ")} by later authority — check before relying`);
+      }
       // Rung 3 surfacing: a pin whose page falls outside the cited
       // opinion's star-page span is a real defect the user must see.
       // Annotation here; the strike happens below.
@@ -213,6 +228,24 @@ function crossReference(
     // ARE verified; the caveat tells the user exactly what was not.
     if (s.tag === "LAW" && cits.length > 0 && quotes.length === 0 && verified) {
       detail.push("paraphrase — holding not quote-checked");
+    }
+    // F2 support evidence (Phase F): the corpus passage behind the verified
+    // citations, so the user sees the text a check would open. Advisory —
+    // a pin whose window shares almost none of the sentence's content words
+    // is surfaced honestly (unjudgeable windows stay silent).
+    const sentSupports = (report.supports ?? []).filter((sp) =>
+      cits.some((c) => c.citation_text === sp.citation && c.status === "verified")
+    );
+    for (const sp of sentSupports) {
+      if (sp.pin_unsupported) {
+        detail.push(
+          `support: pin '${sp.pin}' — window text shares little with the sentence — verify the proposition yourself`
+        );
+      } else {
+        detail.push(
+          `support: ${sp.passage.replace(/\s+/g, " ").slice(0, 160)}${sp.passage.length > 160 ? "…" : ""}`
+        );
+      }
     }
     // [LAW] must carry CHECKED authority. §5.3 + §5.1. The pin may arrive
     // via the dedicated field (local JSON tier) or inline as a parenthetical

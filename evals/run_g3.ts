@@ -37,6 +37,9 @@ const BASELINE = path.join(REPO, "evals", "g3-baseline.json");
 const RATE_TOLERANCE = 0.05;
 
 const OFFLINE = process.argv.includes("--offline");
+// --keep-db leaves the scratch DB on disk for post-mortem diagnosis (the
+// finally-block skips deletion). Diagnosis-only: never used for evidence.
+const KEEP_DB = process.argv.includes("--keep-db");
 // --only=g3-01,g3-02 runs a subset (targeted diagnosis). A partial run is not
 // full-scope evidence: it routes to the sidecar report and never trips the
 // verified-rate regression gate (the subset's rate is not comparable).
@@ -285,7 +288,7 @@ async function main() {
     }
   } finally {
     app.close();
-    try { rmSync(scratchPath); } catch { /* keep tree clean */ }
+    if (!KEEP_DB) { try { rmSync(scratchPath); } catch { /* keep tree clean */ } }
   }
 }
 

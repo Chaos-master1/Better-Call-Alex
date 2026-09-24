@@ -169,6 +169,9 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
 
   blocks.push({ kind: "heading", text: "Authority appendix" });
   for (const a of drafted.authority_appendix ?? []) {
+    const proven = a.proven_treatment?.length
+      ? ` [PROVEN treatment: ${a.proven_treatment.join(", ")}]`
+      : "";
     const treat = a.inferred_treatment?.length
       ? ` [inferred treatment: ${a.inferred_treatment.join(", ")}]`
       : "";
@@ -176,7 +179,7 @@ export function planMotionParagraphs(drafted: DraftDoc): PlannedBlock[] {
     const flag = a.verified ? amb : amb + " — UNVERIFIED";
     blocks.push({
       kind: "bullet",
-      text: `${a.citation} (${a.case_name ?? "—"})${treat}${flag}`,
+      text: `${a.citation} (${a.case_name ?? "—"})${proven}${treat}${flag}`,
     });
   }
 

@@ -28,6 +28,7 @@
  * entries become `unresolved_citation` checks (overall=fail), not filters.
  */
 import type Database from "better-sqlite3";
+import { supportForCitation, type SupportEvidence } from "./support.js";
 import {
   resolveCluster,
   normalizePage,
@@ -83,6 +84,12 @@ export interface CitationCheck {
   cluster_id?: number;
   case_name?: string | null;
   inferred_treatment?: string[];
+  /** F1 good-law: PROVEN treatment (strike-grade) — strict bitfield from
+   *  treatment_proven (negation-vetoed, date-guarded, writer-filtered).
+   *  Present only when the proven table exists in this corpus and the
+   *  opinion carries proven signal. The verifier STRIKES a sentence whose
+   *  proven signal includes the overruled family (bit 1). */
+  proven_treatment?: number;
   /** set when form === "statute": row id in the statutes table (G4) */
   statute_id?: number;
   /** >1 entry: the cite identifies several clusters (probe04: 7.2% of
@@ -132,6 +139,9 @@ export interface VerificationReport {
   overall: "pass" | "fail";
   citations: CitationCheck[];
   quotes: QuoteCheck[];
+  /** F2 support evidence (Phase F): the corpus passage backing each
+   *  verified citation, pin-window anchored. Advisory — never gates. */
+  supports?: SupportEvidence[];
   summary: Record<string, number>;
 }
 
@@ -177,6 +187,37 @@ export function treatmentLabels(flags: number | null | undefined): string[] {
   if (!flags) return [];
   return TREATMENT_LABELS.filter((t) => flags & t.bit).map((t) => t.label);
 }
+
+/** F1 good-law: PROVEN treatment lookup — strike-grade, per CLAUDE.md §5.5
+ *  (only provable claims gate the draft; the loose aggregate
+ *  authority.treatment_flags stays annotation-only via treatmentLabels).
+ *
+ *  The treatment_proven table is built by `etl/build_authority.py proven`:
+ *  sentence-scoped TREATMENT_RE match, negation veto ("never been
+ *  overruled" never flags), in-quote exclusion, date guard (the citing
+ *  opinion must post-date the cited decision), and a writer filter (the
+ *  citing text must be a majority/combined opinion). Table-optional:
+ *  fixture DBs and pre-F1 corpora simply carry no proven signal (unknown,
+ *  never a strike).
+ *
+ *  Returns the strict bitfield (same bit semantics as TREATMENT_LABELS).
+ */
+export function provenTreatment(db: Database.Database, opinionId: number): number | null {
+  let has = provenTableMemo.get(db);
+  if (has === undefined) {
+    has =
+      db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='treatment_proven'").get() != null;
+    provenTableMemo.set(db, has);
+  }
+  if (!has) return null;
+  const row = db
+    .prepare("SELECT proven_flags FROM treatment_proven WHERE opinion_id = ?")
+    .get(opinionId) as { proven_flags: number } | undefined;
+  return row ? row.proven_flags : null;
+}
+
+// One check per handle: DDL never changes mid-process.
+const provenTableMemo = new WeakMap<Database.Database, boolean>();
 
 // Straight and curly double-quote delimiters. /g is required by matchAll.
 const SPAN_RE = /["\u201c]([^"\u201c\u201d]{8,2000}?)["\u201d]/g;
@@ -670,6 +711,7 @@ export function* analyzeCitationsAndQuotesGen(
           cluster_id: shortRes.cluster_id,
           case_name: shortRes.case_name,
           inferred_treatment: treatmentLabels(auth?.flags),
+          proven_treatment: provenTreatment(db, shortRes.opinion_id) ?? undefined,
         });
         if (c.pin_cite) yield* checkPinFor(citations[citations.length - 1], shortRes.opinion_id, lastFull?.page ?? null);
         resolvedChain.push(citations[citations.length - 1]);
@@ -761,6 +803,7 @@ export function* analyzeCitationsAndQuotesGen(
       cluster_id: res.cluster_id,
       case_name: res.case_name,
       inferred_treatment: treatmentLabels(auth?.flags),
+      proven_treatment: provenTreatment(db, res.opinion_id) ?? undefined,
       ...(res.all_cluster_ids && res.all_cluster_ids.length > 1
         ? { ambiguous_cluster_ids: res.all_cluster_ids }
         : {}),
@@ -1001,6 +1044,22 @@ export function* analyzeCitationsAndQuotesGen(
     });
   }
 
+  // ---- F2 support evidence (Phase F) — advisory only -------------------
+  // For every verified citation, surface the corpus passage backing it
+  // (pin-window anchored). Never gates: verification judged citations and
+  // quotes; this adds the "show me the text" layer for the user.
+  let supports: SupportEvidence[] | undefined;
+  try {
+    const cand: SupportEvidence[] = [];
+    for (const c of citations) {
+      const ev = supportForCitation(db, c, text);
+      if (ev) cand.push(ev);
+    }
+    if (cand.length > 0) supports = cand;
+  } catch {
+    // Advisory pass: any failure degrades to "no evidence", never an error.
+  }
+
   // ---- verdict ------------------------------------------------------------
   const summary: Record<string, number> = {};
   for (const c of citations) summary[`citation:${c.status}`] = (summary[`citation:${c.status}`] ?? 0) + 1;
@@ -1018,6 +1077,7 @@ export function* analyzeCitationsAndQuotesGen(
     overall: anyUnresolved || anyQuoteFail ? "fail" : "pass",
     citations,
     quotes,
+    ...(supports ? { supports } : {}),
     summary,
   };
 }
