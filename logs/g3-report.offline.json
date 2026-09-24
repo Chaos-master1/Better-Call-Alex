@@ -1,6 +1,7 @@
 {
-  "generated_at": "2026-09-24T18:08:29.618Z",
+  "generated_at": "2026-09-24T22:55:28.008Z",
   "offline": true,
+  "engine": "cloud",
   "patterns": 6,
   "results": [
     {
@@ -36,7 +37,7 @@
   ],
   "gate": {
     "verified_rate": null,
-    "baseline_rate": 0.9008264462809917,
+    "baseline_rate": 1,
     "tolerance": 0.05,
     "regression": false
   },

@@ -29,22 +29,25 @@ import { currentModel } from "../app/lib/llm.js";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PATTERNS = path.join(REPO, "evals", "g3-patterns.json");
 const OUT = path.join(REPO, "logs", "g3-report.json");
-// --out=<path> redirects the report artifact (engine-separated evidence:
-// cloud runs write logs/g3-cloud-report.json instead of touching the
-// committed local-tier evidence). Refuses paths outside logs/.
+// Engine scoping: the harness runs under the ambient ALEX_ENGINE (local
+// default, cloud when set). Each engine owns its report artifact and its
+// baseline — a cloud run must never overwrite local live-pass evidence or
+// move the local floor (and vice versa). This actually happened: a cloud
+// run with the default report path ratcheted the shared baseline to 100%.
+const ENGINE = (process.env.ALEX_ENGINE ?? "local") === "cloud" ? "cloud" : "local";
+const OUT_DEFAULT =
+  ENGINE === "cloud" ? path.join(REPO, "logs", "g3-cloud-report.json") : OUT;
+// --out=<path> (equals form) redirects the report artifact within logs/.
 const outArg = process.argv.find((a) => a.startsWith("--out="));
-const OUT_OVERRIDE = outArg
-  ? path.resolve(REPO, outArg.slice(6))
-  : null;
+const OUT_OVERRIDE = outArg ? path.resolve(REPO, outArg.slice(6)) : null;
 if (OUT_OVERRIDE && !OUT_OVERRIDE.startsWith(path.join(REPO, "logs") + path.sep)) {
   console.error(`--out must land inside logs/ (got ${OUT_OVERRIDE})`);
   process.exit(2);
 }
-// Verified-rate ratchet: the last accepted live run's rate is the floor. A
-// regression beyond the tolerance fails the gate; a better rate ratchets the
-// baseline up. Structural gates stay as-is — this tracks the product metric
-// (how much of a draft survives verification) without gate-creep on noise.
-const BASELINE = path.join(REPO, "evals", "g3-baseline.json");
+const BASELINE =
+  ENGINE === "cloud"
+    ? path.join(REPO, "evals", "g3-baseline-cloud.json")
+    : path.join(REPO, "evals", "g3-baseline-local.json");
 const RATE_TOLERANCE = 0.05;
 
 const OFFLINE = process.argv.includes("--offline");
@@ -249,6 +252,7 @@ async function main() {
     const report = {
       generated_at: new Date().toISOString(),
       offline: OFFLINE,
+      engine: ENGINE,
       patterns: spec.patterns.length,
       results,
       gate: {
@@ -265,27 +269,29 @@ async function main() {
         `  ! verified-rate regression: ${(verifiedRate! * 100).toFixed(1)}% vs baseline ${(baseline!.rate * 100).toFixed(1)}% (tolerance ${(RATE_TOLERANCE * 100).toFixed(0)}pt) — gate fail`
       );
     }
-    // Evidence guard: logs/g3-report.json is committed live-pass evidence.
-    // An --offline run or a run with model-missing skips proves nothing about
-    // the live pipeline, so it must never overwrite that file (it once did).
-    // Such runs write to a sidecar path instead.
+    // Evidence guard: the engine's report path is committed live-pass
+    // evidence. An --offline run or a run with model-missing skips proves
+    // nothing about the live pipeline, so it must never overwrite that file
+    // (it once did). Such runs write to a sidecar path instead.
     const outPath =
       !OFFLINE && skipped === 0
-        ? (OUT_OVERRIDE ?? OUT)
+        ? (OUT_OVERRIDE ?? OUT_DEFAULT)
         : OUT.replace(/\.json$/, OFFLINE ? ".offline.json" : ".partial.json");
     mkdirSync(path.dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify(report, null, 2));
     console.log(`\nG3 report → ${path.relative(REPO, outPath)}  overall=${report.overall}`);
-    if (outPath !== OUT) {
+    if (outPath !== OUT_DEFAULT) {
       console.log(
-        "note: not live evidence (offline mode or skipped patterns) — committed logs/g3-report.json untouched"
+        `note: not live evidence (offline mode or skipped patterns) — committed ${path.relative(REPO, OUT_DEFAULT)} untouched`
       );
     }
     if (!allPass) process.exit(1);
     console.log(`G3 GATE: PASS — ${spec.patterns.length} patterns gated (or skipped offline) correctly`);
-    // Ratchet up only, and only from accepted live runs.
+    // Ratchet up only, and only from accepted live runs written to the
+    // engine's canonical report path (an --out= diagnosis run never moves
+    // the floor).
     if (
-      outPath === OUT &&
+      outPath === OUT_DEFAULT &&
       verifiedRate != null &&
       (baseline == null || verifiedRate > baseline.rate)
     ) {
