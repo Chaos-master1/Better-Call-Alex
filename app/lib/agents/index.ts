@@ -237,6 +237,14 @@ Pin cite convention (CLAUDE.md §5.1): a pin cite is the volume + reporter
 + page, e.g. "410 U.S. 113" or "915 F.2d 1234, 1235". The form is the
 one the reporter uses, e.g. "456 U.S. 798, 800" (volume U.S. page).
 
+Citation grounding (Phase D): each retrieval hit may carry
+"canonical_cites" — the case's citation strings exactly as the corpus
+records them. When present, the case cite in your pin_cite MUST be one
+of those strings VERBATIM (you may append only the pin page after a
+comma, e.g. "505 U.S. 1003, 1015"). Do NOT cite a case from your own
+memory — a case name you recall is not authority here; if no supplied
+hit supports the sentence, write [INFERRED] or leave the case out.
+
 You MUST put every pin cite in BOTH places:
   1. inline at the end of the [LAW] sentence, in parentheses, e.g.
      "...the Court held that a warrant is required (410 U.S. 113, 117)."
@@ -295,6 +303,12 @@ export async function analystAgent(
       // 26065. render.ts now catches that downstream; this removes the
       // source. Never put machine-internal fields in a model payload.
       passages: h.passages.map((p) => p.text),
+      // Phase D grounding: the corpus's own canonical citation strings.
+      // Live run 2026-09-23 (run 54) proved the cost of omitting these:
+      // with nothing to copy, the model cited from memory — Sharpe as
+      // "488 U.S. 197" (real: 470 U.S. 675), Hicks as "479 U.S. 118"
+      // (real: 480 U.S. 321). The verifier rightly struck both.
+      ...(h.cites && h.cites.length > 0 ? { canonical_cites: h.cites } : {}),
     })),
   };
   const r = await generate(JSON.stringify(payload), {
@@ -546,16 +560,23 @@ export function negativeTreatmentHits(
 async function counterQueryFrom(
   intake: IntakeOutput,
   analyst: AnalystOutput
-): Promise<string> {  // Cheap heuristic: use the claims + a known counter-doctrine phrase.
-  // Real adversarial framing is for the model; we just give it a retrieval
-  // seed that is the opposite of the analyst's rule.
+): Promise<string> {
+  // Retrieval-dialect constraint (g3 fact-03 adversary-zero fix, 2026-09-23):
+  // search() AND-conjoins its tokens — a natural-language question becomes a
+  // 10-token conjunction that matches nothing. The counter frame must arrive
+  // as doctrine phrases + key terms, the same discipline the Researcher's
+  // query agent follows for our FTS dialect.
   const claim = intake.claims[0] ?? "";
   const r = await generate(
-    `Given the plaintiff's claim "${claim}" and the analyst's rule "${
-      analyst.irac.rule
-    }", write a single short US case-law retrieval query that would surface
-    authority AGAINST the analyst's conclusion. Output only the query string.`,
-    { maxTokens: 60 }
+    `Write ONE case-law retrieval query that would surface authority AGAINST the analyst's conclusion.
+Claim: "${claim}"
+Rule relied on: "${analyst.irac.rule}"
+Requirements: 2-6 terms total; use established doctrine phrases (e.g. "qualified immunity", "duty to warn", "public necessity exception") plus at most two other key terms; single spaces; NOT a sentence; no question mark; no quotes.
+Output only the query.`,
+    // 60 truncated live under the cloud tier (finish_reason=length): a
+    // reasoning model spends completion budget on scratch before the one
+    // line we want, so the cap must leave reasoning headroom.
+    { maxTokens: 300 }
   );
   const raw = r.content.trim().split("\n")[0].slice(0, 200).trim();
   // P2: validate — empty / natural-language question → fallback template
@@ -576,17 +597,74 @@ async function counterQueryFrom(
 // helpers
 // =====================================================================
 
-function parseJson<T>(raw: string, tag: string): T {
+/**
+ * The single JSON boundary for every agent output. Strict first; on
+ * failure, fence-strip then the control-char repair (see below). Throws
+ * loud with a 200-char prefix when the payload is unrecoverable.
+ */
+export function parseJson<T>(raw: string, tag: string): T {
   // The model occasionally wraps JSON in prose fences. Strip them.
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   const body = fence ? fence[1] : raw;
   try {
     return JSON.parse(body) as T;
-  } catch (e) {
+  } catch (e: any) {
+    // Gemini's OpenAI-compat mode sometimes emits RAW control characters
+    // (literal newlines/tabs) inside JSON string values despite
+    // response_format:json_object — strict JSON.parse rejects the whole
+    // payload (live g3-03, 2026-09-24). One deterministic repair pass:
+    // escape control chars that appear INSIDE string literals only. If
+    // the result still fails to parse, throw the loud error below —
+    // never accept a payload we could not actually repair.
+    const repaired = escapeControlCharsInStrings(body);
+    if (repaired !== body) {
+      try {
+        return JSON.parse(repaired) as T;
+      } catch {
+        // fall through to the loud error below
+      }
+    }
+    // Position-prefixed error: "at char 4123 (…)" makes a live failure
+    // diagnosable from the log alone instead of a guessing game.
+    const pos =
+      typeof e?.message === "string" ? (e.message.match(/position (\d+)/)?.[1] ?? "") : "";
+    const at = pos
+      ? ` at char ${pos} (…${JSON.stringify(body.slice(Math.max(0, Number(pos) - 40), Number(pos))).slice(1, -1)})`
+      : "";
     throw new Error(
-      `[${tag} agent] model returned non-JSON. First 200 chars: ${raw.slice(0, 200)}`
+      `[${tag} agent] model returned non-JSON${at}. First 200 chars: ${raw.slice(0, 200)}`
     );
   }
+}
+/** Escape raw control characters (\n \r \t) occurring inside JSON string
+ *  literals. Tracks in-string state with backslash-escape awareness, so
+ *  structural newlines BETWEEN tokens are left untouched. */
+function escapeControlCharsInStrings(s: string): string {
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr && c === "\\") {
+      out += c + (s[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inStr = !inStr;
+      out += c;
+      continue;
+    }
+    if (inStr && c === "\n") {
+      out += "\\n";
+    } else if (inStr && c === "\r") {
+      out += "\\r";
+    } else if (inStr && c === "\t") {
+      out += "\\t";
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 interface AgentTaggedSentence {

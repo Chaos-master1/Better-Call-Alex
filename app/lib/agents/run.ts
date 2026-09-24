@@ -30,12 +30,14 @@ import {
   setRunMode,
   consumeFallbackEvent,
   resetEngineToLocal,
+  setCloudPayloadTransform,
   RESIDENT_MODEL,
   ANALYST_MODEL,
   engineQualifiedModel,
   type EngineId,
   type EngineMode,
 } from "../llm.js";
+import { createPayloadGuard, type PayloadGuard } from "./payload.js";
 import {
   IRAC_FIELDS,
   iracSentence,
@@ -49,6 +51,11 @@ import {
   type TaggedSentence,
 } from "../render.js";
 import { draftDocument, type DraftDoc } from "../draft.js";
+import {
+  repairStruckSentences,
+  applyRepairs,
+  type RepairEvidence,
+} from "./repair.js";
 import { buildVerificationCertificate } from "../certificate.js";
 import { openCorpus } from "../db.js";
 
@@ -87,7 +94,21 @@ export interface RunOptions {
   /** Cloud failure policy for this run: "abort" (default, honest) or
    *  "local" (disclosed fallback — audit row + UI badge, never silent). */
   cloudFallback?: "abort" | "local";
+  /** Party names to redact from CLOUD payloads (ADR-004 §2.4): replaced
+   *  with [PARTY n] placeholders before any bytes leave the machine and
+   *  rehydrated in the returned draft. Local mode is untouched (the guard
+   *  only runs in the cloud transform). The audit records counts only. */
+  redactParties?: string[];
 }
+
+/**
+ * Phase E2 verify-then-revise guards. A repair is accepted only when it
+ * verifies at least MIN_REPAIR_GAIN above the original verified-vs-total
+ * rate; the [LAW] count may not shrink by more than the tolerance (no
+ * gaming the rate by writing less law).
+ */
+const MIN_REPAIR_GAIN = 0.05;
+const REPAIR_MAX_LAW_SHRINK = 0.2;
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -119,6 +140,11 @@ export async function runCase(
   // the env default stands. Restored in finally so a server process never
   // leaks one run's override into the next.
   setRunMode(opts.engineMode ?? null);
+  // Cloud payload protections live for exactly this run (cleared in the
+  // finally): redaction + caps apply INSIDE the llm seam, where the routed
+  // engine is known — local prompts ride through untouched.
+  const guard = createPayloadGuard(opts.redactParties ?? []);
+  setCloudPayloadTransform(guard.transform);
   const engines: Array<{ stage: string; engine: EngineId; model: string }> = [];
   try {
     // The running row is created BEFORE any fallible work: a pre-intake
@@ -138,7 +164,7 @@ export async function runCase(
     persistIntake(appDb, caseId, intake, intakeModel);
     engines.push({ stage: "intake", engine: intakeEngine, model: intakeModel });
     audit(appDb, "agent.intake", { caseId, engine: intakeEngine, model: intakeModel }, caseId);
-    auditFallback(appDb, caseId, "intake");
+    auditFallback(appDb, caseId, "intake", engines);
 
     // 2. researcher — stays LOCAL in the default auto route: it writes
     //    queries for OUR FTS dialect (phrase dictionary, AND semantics);
@@ -150,7 +176,7 @@ export async function runCase(
     const researchModel = engineQualifiedModel(researchEngine, RESIDENT_MODEL);
     engines.push({ stage: "researcher", engine: researchEngine, model: researchModel });
     audit(appDb, "agent.researcher", { caseId, hits: research.hits.length, engine: researchEngine, model: researchModel }, caseId);
-    auditFallback(appDb, caseId, "researcher");
+    auditFallback(appDb, caseId, "researcher", engines);
 
     // 3. analyst + adversary pass — the reasoning-heavy stages. Local tier:
     //    swap to 14b (useModel no-ops under the cloud engine).
@@ -163,7 +189,7 @@ export async function runCase(
     persistAnalyst(appDb, caseId, analyst, analystModel);
     engines.push({ stage: "analyst", engine: analystEngine, model: analystModel });
     audit(appDb, "agent.analyst", { caseId, engine: analystEngine, model: analystModel }, caseId);
-    auditFallback(appDb, caseId, "analyst");
+    auditFallback(appDb, caseId, "analyst", engines);
 
     throwIfAborted(opts.signal);
     const adversaryEngine = await useEngine("auto", "adversary");
@@ -173,7 +199,7 @@ export async function runCase(
     persistAdversary(appDb, caseId, adversary, adversaryModel);
     engines.push({ stage: "adversary", engine: adversaryEngine, model: adversaryModel });
     audit(appDb, "agent.adversary", { caseId, engine: adversaryEngine, model: adversaryModel }, caseId);
-    auditFallback(appDb, caseId, "adversary");
+    auditFallback(appDb, caseId, "adversary", engines);
 
     // 4. verifier gate over the combined tagged sentences (async — does not block loop)
     // §5.3 gate coverage (2026-09-20 audit): the analyst's IRAC fields and
@@ -198,15 +224,95 @@ export async function runCase(
     ];
     // RECORD confinement runs here for the audit count AND inside the
     // verify fns (idempotent second pass) so the gate holds for all
-    // callers, not just this orchestrator.
+    // callers, not just this orchestrator. `let` because the E2 repair
+    // pass may replace sentences and re-confine.
     const intakeFacts = [...intake.facts, ...intake.claims].join(" ");
-    const { sentences: confined, retagged } = confineRecordSentences(combined, intakeFacts);
-    // Use async bridge when an event loop is present (server); fall back to sync
-    // for the CLI where top-level await is not needed. The sync path is still
-    // the canonical one for evals; this path just avoids blocking.
-    const draft = process.env.ALEX_VERIFY_SYNC === "1"
+    const confinedInit = confineRecordSentences(combined, intakeFacts);
+    let confined: TaggedSentence[] = confinedInit.sentences;
+    const retagged = confinedInit.retagged;
+    // Phase E2: verify-then-revise — the ONE bounded repair pass behind
+    // the fail-closed gate. The drafter sees its own struck sentences + the
+    // retrieval evidence and must repair, weaken, or drop each one.
+    // Accepted only when the guards hold; the gate never gets weaker for
+    // trying (a failed repair leaves the original draft standing).
+    const draft0 = process.env.ALEX_VERIFY_SYNC === "1"
       ? verifyTaggedSentences(corpus, confined, intakeFacts)
       : await verifyTaggedSentencesAsync(corpus, confined, intakeFacts);
+    let draft = draft0;
+
+    const repairEvidence: RepairEvidence[] = research.hits.map((h) => ({
+      case_name: h.case_name,
+      ...(h.cites && h.cites.length > 0 ? { canonical_cites: h.cites } : {}),
+      passages: h.passages.map((p) => p.text),
+    }));
+    const before = {
+      law: draft0.sentences.filter((s) => s.tag === "LAW").length,
+      verified: draft0.sentences.filter((s) => s.verified).length,
+      total: draft0.sentences.length,
+    };
+    // Pin the repair stage on the engine seam BEFORE the call (auto mode
+    // routes on the active stage) and swap to 14b only when there is
+    // something to repair — an idle swap costs the VRAM budget for nothing.
+    const hasStruck =
+      before.verified < before.total && repairEvidence.length > 0;
+    if (hasStruck) {
+      const repairEngine = await useEngine("auto", "repair");
+      await useModel(ANALYST_MODEL);
+      let repair: Awaited<ReturnType<typeof repairStruckSentences>>;
+      try {
+        repair = await repairStruckSentences(draft0, repairEvidence, intake);
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") throw err;
+        // Repair is never critical (§11): any failure — including a
+        // malformed model answer — leaves the verified original standing.
+        audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: `repair failed: ${(err as Error)?.message ?? String(err)}` }, caseId);
+        repair = null;
+      }
+      if (repair) {
+        throwIfAborted(opts.signal);
+        const repairedList = applyRepairs(confined, repair);
+        const { sentences: repairedConfined } = confineRecordSentences(repairedList, intakeFacts);
+        const redraft = process.env.ALEX_VERIFY_SYNC === "1"
+          ? verifyTaggedSentences(corpus, repairedConfined, intakeFacts)
+          : await verifyTaggedSentencesAsync(corpus, repairedConfined, intakeFacts);
+        const after = {
+          law: redraft.sentences.filter((s) => s.tag === "LAW").length,
+          verified: redraft.sentences.filter((s) => s.verified).length,
+          total: redraft.sentences.length,
+        };
+        const originalRate = before.total > 0 ? before.verified / before.total : 0;
+        const repairedRate = after.total > 0 ? after.verified / after.total : 0;
+        const lawShrink = before.law > 0 ? (before.law - after.law) / before.law : 0;
+        const accepted =
+          repairedRate >= originalRate + MIN_REPAIR_GAIN &&
+          lawShrink <= REPAIR_MAX_LAW_SHRINK;
+        audit(appDb, "verifier.repair", {
+          caseId,
+          flagged: before.total - before.verified,
+          repaired: repair.repaired_count,
+          dropped: repair.replacements.length - repair.repaired_count,
+          verified_before: before.verified,
+          verified_after: after.verified,
+          total_before: before.total,
+          total_after: after.total,
+          law_before: before.law,
+          law_after: after.law,
+          accepted,
+        }, caseId);
+        if (accepted) {
+          confined = repairedConfined;
+          draft = redraft;
+        }
+        const repairModel = engineQualifiedModel(repairEngine, ANALYST_MODEL);
+        engines.push({ stage: "repair", engine: repairEngine, model: repairModel });
+        audit(appDb, "agent.repair", { caseId, engine: repairEngine, model: repairModel, accepted }, caseId);
+      } else {
+        audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: "repair declined or empty" }, caseId);
+      }
+    } else {
+      audit(appDb, "verifier.repair", { caseId, flagged: before.total - before.verified, skipped: "no struck sentences" }, caseId);
+    }
+
     audit(appDb, "verifier.run", {
       caseId,
       overall: draft.overall,
@@ -216,7 +322,18 @@ export async function runCase(
     }, caseId);
 
     // 5. drafter template (pure, no LLM) — banner applied in code per §11
-    const drafted = draftDocument(draft, intake, research, analyst, adversary);
+    let drafted = draftDocument(draft, intake, research, analyst, adversary);
+    // Rehydrate redacted party names in the USER-FACING document only: the
+    // cloud payloads left the machine with placeholders, the draft comes
+    // home to the person who owns the names.
+    if (opts.redactParties && opts.redactParties.length > 0) {
+      drafted = rehydrateParties(drafted, guard.namesInAssignmentOrder());
+    }
+    // Disclose payload caps + redaction (counts only, never names).
+    const disclosures = guard.disclosures();
+    if (disclosures.cappedStages.length > 0 || disclosures.redactedPartyCount > 0) {
+      audit(appDb, "cloud.payload_guard", { caseId, ...disclosures }, caseId);
+    }
     // keep the JSON for audit; the UI renders `draft` + `drafted` together
     appDb
       .prepare(`UPDATE runs SET draft_json = ? WHERE case_id = ? AND status = 'running'`)
@@ -286,11 +403,12 @@ export async function runCase(
     try {
       corpus?.close();
     } finally {
-      // Engine state is per-run: clear the mode override and drop any
-      // cloud pin so a server process never leaks one run's routing into
-      // the next (the next runCase pins its own stages from scratch).
+      // Engine state is per-run: clear the mode override, drop any cloud
+      // pin, and unregister the payload transform so a server process
+      // never leaks one run's routing or redaction map into the next.
       setRunMode(null);
       resetEngineToLocal();
+      setCloudPayloadTransform(null);
       release();
     }
   }
@@ -299,11 +417,71 @@ export async function runCase(
 
 /** Disclose a cloud→local fallback for a stage (fail-loud, §5: never a
  *  silent degradation). A no-op when no fallback happened this stage. */
-function auditFallback(appDb: Database.Database, caseId: number, stage: string): void {
+function auditFallback(
+  appDb: Database.Database,
+  caseId: number,
+  stage: string,
+  engines: Array<{ stage: string; engine: EngineId; model: string }>
+): void {
   const fb = consumeFallbackEvent();
   if (fb) {
     audit(appDb, "engine.fallback", { caseId, ...fb, disclosed: true }, caseId);
+    // Provenance honesty: the engines list records what ACTUALLY produced
+    // the stage. A pinned cloud stage that fell back to local is a local
+    // stage in the UI badge — silently local would be a lie.
+    const last = engines.at(-1);
+    if (last && last.stage === stage && last.engine === "cloud") {
+      last.engine = "local";
+      last.model = `local (cloud fallback: ${fb.error.slice(0, 60)})`;
+    }
   }
+}
+
+/**
+ * Rehydrate redacted party placeholders in the draft document: cloud saw
+ * [PARTY n], the user gets their names back. The name→placeholder mapping
+ * is the guard's own assignment order (occurrence order in the payloads),
+ * so [PARTY n] always resolves to the exact party it replaced. Applied to
+ * the user-facing doc AFTER verification: the verifier judged exactly what
+ * the model wrote (placeholders), and the digest covers the REHYDRATED
+ * document — the honest chain from what was checked to what the user holds.
+ */
+function rehydrateParties(
+  drafted: ReturnType<typeof draftDocument>,
+  namesInAssignmentOrder: string[]
+): ReturnType<typeof draftDocument> {
+  const byIndex = new Map<number, string>();
+  namesInAssignmentOrder.forEach((n, i) => byIndex.set(i + 1, n));
+  const phRe = /\[PARTY (\d+)\]/g;
+  const swap = (s: string): string =>
+    s.replace(phRe, (_m, d: string) => byIndex.get(Number(d)) ?? `[PARTY ${d}]`);
+  return {
+    ...drafted,
+    title: swap(drafted.title),
+    caption: swap(drafted.caption),
+    irac_verified: Object.fromEntries(
+      Object.entries(drafted.irac_verified ?? {}).map(([k, v]) => [
+        k,
+        v ? { ...v, text: swap(v.text) } : v,
+      ])
+    ) as typeof drafted.irac_verified,
+    irac: Object.fromEntries(
+      Object.entries(drafted.irac).map(([k, v]) => [k, swap(v)])
+    ) as typeof drafted.irac,
+    element_checklist: drafted.element_checklist.map((e) => ({
+      ...e,
+      element: swap(e.element),
+      basis: swap(e.basis),
+    })) as typeof drafted.element_checklist,
+    sentences: drafted.sentences.map((s) => ({ ...s, text: swap(s.text) })),
+    adversary: {
+      ...drafted.adversary,
+      counter_argument_verified: drafted.adversary.counter_argument_verified
+        ? { ...drafted.adversary.counter_argument_verified, text: swap(drafted.adversary.counter_argument_verified.text) }
+        : undefined,
+      counter_argument: swap(drafted.adversary.counter_argument),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------

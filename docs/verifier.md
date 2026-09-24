@@ -39,14 +39,22 @@ draft text ──> eyecite bridge (Python subprocess, JSON stdin/stdout)
            │                  -> quote_not_found             (§5.2)
            │     match elsewhere -> quote_wrong_case + best-effort
            │                          true source identification
-           ├──> annotate: short/id/supra forms = unsupported_form;
-           │     pin pages = pin_unverified (corpus has no star pages)
+           ├──> short/id/supra forms: resolve through the draft's own
+           │     ANTECEDENT (nearest preceding verified full cite with
+           │     matching vol+rep; Id. = the immediately preceding one).
+           │     No antecedent → unsupported_form annotation, never a
+           │     guess. Pin pages: checked against star-page anchors where the
+│     corpus carries them (pin_status; out_of_range fails).
            └──> attach INFERRED treatment flags (cluster-level max from
                  authority), never asserted                  (§5.5)
 
 overall = fail iff any citation unresolved OR any quote unverified.
 Unverifiable content is REPORTED, never dropped — struck-through
-rendering happens in G3's UI on top of this report.
+rendering happens in G3's UI on top of this report. A statute from an
+title the corpus does not carry (the shipped corpus has eCFR only, no
+US Code) is `statute_not_loaded`: unjudgeable, so it strikes the
+sentence without failing the draft — a wrong section under a loaded
+title stays `unresolved_citation` and fails.
 
 Out-of-corpus reporters (WL, Lexis) annotate `out_of_corpus` and do NOT
 fail the draft: probe01 (2026-09-20) measured the corpus resolution
@@ -56,7 +64,24 @@ that fails to resolve still fails the draft (§5.1).
 
 Render gate (render.ts): a [LAW] sentence passes only with a pin cite
 that produced an extracted citation in its range — a pin the extractor
-saw nothing in (e.g. a bare number) fails closed, never vacuously.
+saw nothing in (a bare number) fails closed, never vacuously. A verified
+inline cite whose structured pin field the model dropped is BACKFILLED
+from the checked extraction (provenance, not a guess), and a [LAW]
+sentence that passed on citations alone (no quote was extracted and
+checked) carries the detail line "paraphrase — holding not quote-checked":
+the gate checks cite resolution and quotes, not whether the proposition
+matches the source, and the caveat says exactly what was not checked.
+
+Verify-then-revise (Phase E2, run.ts + lib/agents/repair.ts): behind the
+gate, ONE bounded repair pass lets the drafter answer its own strikes —
+repair the cite from the supplied canonical_cites, weaken to [INFERRED],
+or drop. The answer is EXACT JSON (one entry per flagged sentence, in
+order — nothing unflagged can be smuggled in), [LAW] entries must carry
+pin cites, and the repaired draft is re-verified and accepted ONLY when
+it verifies at least 5pt above the original rate and the [LAW] count
+shrank by ≤20% (no gaming the rate by writing less law). A failed or
+declined repair leaves the original draft standing; every attempt lands
+an audit row (`verifier.repair`, `agent.repair`).
 ```
 
 ## Quote-matching ladder (deliberately conservative)
@@ -109,6 +134,9 @@ never depends on identification.
 | treatment-language recall | **0.774** (941/1216) | LegalBench `overruling` test split — see note below |
 | treatment-language false-positive rate | **0.014** (16/1178) | same |
 | scanner extension delta | recall .525→.774, FPR .011→.014 | `disapprov*`, `supersed*`, `depart* from`, `no longer good law/controlling/followed/valid`; `reject` tested and excluded (+2pp recall for +1.3pp FPR) |
+| pin false-strike elimination | trust gate: anchors trusted only when the first matches the reporter's first page | Phase E (core.ts `checkPinFor`) |
+| G3 live verified rate | **90.1%** (109/121, 6 patterns) | Phase E proof run, `logs/g3-report.json` |
+| support evidence (F2) | advisory passage surfacing per verified cite — pin-window anchored; divergent windows flagged `pin_unsupported`, never struck | Phase F, `verify/support.ts` |
 | unit tests | green (`pnpm test` + `unittest`; counts move — see test files, not this table) | |
 
 > **Reading the .774 honestly:** the measurement counts *any*
@@ -122,12 +150,52 @@ Corpus treatment flags rebuilt with the extended scanner via
 `uv run python etl/build_authority.py reflag` (updates only
 `authority.treatment_flags`; edges/pagerank untouched).
 
+### Good-law treatment, two grades (Phase F)
+
+The citator signal is split by proof grade:
+
+- **`authority.treatment_flags` (aggregate)** — the LegalBench-scored
+  scanner over citing-edge context. Annotation-only everywhere.
+- **`treatment_proven` (strict, ETL `proven` stage)** — a flag lands here
+  only when the citing context contains overrule-family language AND the
+  edge passes a negation veto ("never overruled" never poisons) AND the
+  citing opinion postdates the cited one (impossible-treatment edges are
+  date junk) AND the citing opinion is written. Only the overruled bit
+  from THIS table strikes (render.ts); the detail line shows the flag's
+  label so the strike is checkable. The writer filter folds into the
+  scan (memoized PK lookup per citing opinion) and the rowid checkpoint
+  carries the aggregate, so an interrupted run resumes without state
+  loss.
+
+### Support evidence (Phase F, `verify/support.ts`)
+
+Every verified citation gets its backing passage surfaced: pin-window
+anchored via star anchors (the window for the pinned page), opening span
+otherwise. Advisory only — a pinned window sharing <25% content-word
+overlap with the sentence is flagged `pin_unsupported` ("verify the
+proposition yourself"); a window that cannot be located stays silent
+(unjudgeable ≠ unsupported). This layer never gates: verification
+remains citations + quotes; supports are the "show me the text" layer.
+
 ## Honest limitations
 
-1. Short-form citations (`410 U.S., at 150`), `Id.` and `Supra.` are not
-   resolved — annotated `unsupported_form`, never silently accepted.
-2. Pin pages cannot be verified: the corpus stores no star pagination.
-   Annotated `pin_unverified`.
+1. Short-form citations (`410 U.S., at 150`), `Id.` and `Supra.` resolve
+   ONLY through the draft's own antecedent (nearest preceding verified
+   full cite with matching vol+rep; `Id.` = the immediately preceding
+   one; `Supra.` = a resolved antecedent whose case name CONTAINS the
+   supra's party name, via the bridge's antecedent_guess). A short form
+   whose page matches some corpus first-page is NOT resolved via that
+   coincidence — a short form's page is a pin, and guessing would attach
+   the wrong authority. Anything unresolved stays annotated
+   `unsupported_form`, never silently accepted.
+2. Pin pages verify against star pagination where the corpus has it
+   (CourtListener embeds `*115` markers inline; Roe's lead opinion alone
+   carries 68 anchors). `pin_status` ∈ {`pin_in_range`,
+   `pin_out_of_range`, `pin_no_anchors`} — `pin_out_of_range` fails the
+   sentence (a pin the authority does not contain is a mis-reference);
+   `pin_no_anchors` (OCR-damaged or unanchored text) keeps the v1
+   annotation. Scope: the pin's page EXISTS in the cited opinion; whether
+   the proposition sits on that exact page is not machine-checkable.
 3. Corpus cleaning artifacts can destroy a verbatim span (measured case:
    Katz lead opinion contains `intruding eyeit` — separators eaten during
    HTML→text conversion). The matcher does not fuzz across such damage;

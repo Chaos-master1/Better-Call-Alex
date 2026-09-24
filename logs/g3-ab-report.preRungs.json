@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-09-22T21:29:42.825Z",
+  "env_mode": "local",
+  "scope": "partial: patterns g3-02-terry-stop (--only)",
+  "note": "Objective metrics only; no LLM judge (circularity). Side-by-side drafts are for human review. A/B per ADR-004 §2.9.",
+  "patterns": [
+    {
+      "id": "g3-02-terry-stop",
+      "label": "Terry stop-and-frisk, reasonable suspicion",
+      "local": {
+        "engine_mode": "local",
+        "ms": 973939,
+        "sentences": 21,
+        "verified": 16,
+        "unverified": 5,
+        "law_sentences": 7,
+        "law_with_resolving_pin": 2,
+        "citation_resolution_rate": 1,
+        "element_checklist_size": 3,
+        "adversary_counter_authority": 5,
+        "overall": "fail",
+        "engines": [
+          {
+            "stage": "intake",
+            "engine": "local",
+            "model": "local:qwen3.5:9b"
+          },
+          {
+            "stage": "researcher",
+            "engine": "local",
+            "model": "local:qwen3.5:9b"
+          },
+          {
+            "stage": "analyst",
+            "engine": "local",
+            "model": "local:qwen3:14b"
+          },
+          {
+            "stage": "adversary",
+            "engine": "local",
+            "model": "local:qwen3:14b"
+          }
+        ],
+        "draft_text": "[RECORD] An officer was on patrol at 11pm.\n[RECORD] The officer saw a man pacing in front of a closed jewelry store.\n[RECORD] The man was repeatedly peering into the window.\n[RECORD] The man was conferring with another man.\n[RECORD] The officer stopped the man.\n[RECORD] The officer patted the man's outer clothing.\n[RECORD] The officer felt a hard object which turned out to be a pistol.\n[RECORD] The man had no permit for the weapon.\n[LAW] An officer may conduct a brief, investigatory stop when the officer has a reasonable, articulable suspicion that criminal activity is afoot.\n[LAW] Reasonable suspicion can arise from information that is less reliable than that required to show probable cause.\n[LAW] The Fourth Amendment requires at least a particularized and objective basis for suspecting the person stopped of criminal activity.\n[LAW] Police can stop and briefly detain a person for investigative purposes if the officer has a reasonable suspicion supported by articulable facts that criminal activity may be afoot, even if the officer lacks probable cause.\n[INFERRED] The officer's observations may not meet the threshold for reasonable suspicion to justify the stop, as there is no direct evidence of criminal activity or a specific articulable suspicion that criminal activity was afoot.\n[INFERRED] Whether the officer had reasonable suspicion to stop the man based on the observed behavior.\n[INFERRED] An officer may conduct a brief investigatory stop if there is reasonable suspicion that criminal activity is afoot. Reasonable suspicion requires specific, articulable facts that would lead a reasonable officer to believe that criminal activity is occurring or about to occur.\n[INFERRED] The officer observed the man pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man. These actions could be interpreted as suspicious behavior that might indicate criminal intent, such as casing a store for a potential robbery. However, the officer did not have any specific information indicating that a crime was occurring or about to occur, and the behavior alone may not be sufficient to establish reasonable suspicion.\n[INFERRED] Based on the facts presented, the officer's observations may not meet the threshold for reasonable suspicion to justify the stop, as there is no direct evidence of criminal activity or a specific articulable suspicion that criminal activity was afoot.\n[LAW] Courts have consistently held that behavior such as loitering near a business, looking into windows, and engaging in suspicious communication with others can provide reasonable suspicion for a stop, even in the absence of direct evidence of a crime\n[LAW] Furthermore, the Supreme Court in Terry v. Ohio, 392 U.S. 1, 21–22, emphasized that reasonable suspicion may be based on the totality of the circumstances, including the officer’s experience and the context of the encounter\n[LAW] Thus, the officer’s actions were lawful, and the evidence obtained during the stop should not be suppressed\n[INFERRED] The opposing party would argue that the officer's observations—pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man—constitute specific and articulable facts that reasonably support a suspicion of criminal activity, thereby justifying the investigatory stop. [LAW] Courts have consistently held that behavior such as loitering near a business, looking into windows, and engaging in suspicious communication with others can provide reasonable suspicion for a stop, even in the absence of direct evidence of a crime (United States v. Mendenhall, 446 U.S. 544, 557–58). [LAW] Furthermore, the Supreme Court in Terry v. Ohio, 392 U.S. 1, 21–22, emphasized that reasonable suspicion may be based on the totality of the circumstances, including the officer’s experience and the context of the encounter. [LAW] Thus, the officer’s actions were lawful, and the evidence obtained during the stop should not be suppressed."
+      },
+      "cloud": {
+        "engine_mode": "cloud",
+        "ms": 156026,
+        "sentences": 19,
+        "verified": 19,
+        "unverified": 0,
+        "law_sentences": 3,
+        "law_with_resolving_pin": 0,
+        "citation_resolution_rate": 1,
+        "element_checklist_size": 2,
+        "adversary_counter_authority": 5,
+        "overall": "pass",
+        "engines": [
+          {
+            "stage": "intake",
+            "engine": "cloud",
+            "model": "cloud:gemini-flash-lite-latest"
+          },
+          {
+            "stage": "researcher",
+            "engine": "cloud",
+            "model": "cloud:gemini-flash-lite-latest"
+          },
+          {
+            "stage": "analyst",
+            "engine": "cloud",
+            "model": "cloud:gemini-flash-lite-latest"
+          },
+          {
+            "stage": "adversary",
+            "engine": "cloud",
+            "model": "cloud:gemini-flash-lite-latest"
+          }
+        ],
+        "draft_text": "[RECORD] Officer was on patrol at 11:00 PM.\n[RECORD] Officer observed a man pacing in front of a closed jewelry store.\n[RECORD] The man repeatedly peered into the window.\n[RECORD] The man conferred with another man.\n[RECORD] The officer stopped the man.\n[RECORD] The officer patted the man's outer clothing.\n[RECORD] The officer felt a hard object that turned out to be a pistol.\n[RECORD] The man had no permit for the pistol.\n[LAW] A police officer may conduct a brief investigatory stop and a protective weapons frisk where the officer has reasonable suspicion to believe that criminal activity is afoot and the person may be armed and dangerous (392 U.S. 1, 30-31).\n[INFERRED] The totality of the circumstances, including the late hour and the suspicious behavior outside a closed commercial establishment, provided the requisite articulable suspicion.\n[LAW] An officer is justified in conducting a limited search for weapons to ensure safety during an investigatory encounter (392 U.S. 1, 27).\n[INFERRED] Whether a police officer had reasonable suspicion under the Fourth Amendment to conduct an investigatory stop and weapons frisk of a man observed pacing in front of a closed jewelry store, peering into the window, and conferring with another man at 11:00 PM.\n[INFERRED] Under the Fourth Amendment, a police officer may conduct a brief investigatory stop and a protective weapons frisk if the officer possesses a reasonable suspicion, supported by articulable facts, that criminal activity is afoot and that the person with whom he is dealing may be armed and dangerous (392 U.S. 1, 30-31).\n[INFERRED] The officer observed the defendant pacing in front of a closed jewelry store at 11:00 PM, repeatedly peering into the window, and conferring with another man. These specific, articulable facts, viewed in totality under the circumstances of late-night surveillance near a closed commercial establishment, provided the officer with reasonable suspicion to believe criminal activity, such as a potential burglary or robbery, was afoot (392 U.S. 1, 30). Furthermore, because offenses like robbery often involve weapons, the subsequent limited pat-down of the outer clothing for officer safety was justified (392 U.S. 1, 27).\n[INFERRED] The initial stop and subsequent frisk were supported by reasonable suspicion and did not violate the Fourth Amendment; therefore, the motion to suppress the weapon is properly denied (392 U.S. 1, 31).\n[INFERRED] The opposing party will argue that the officer lacked individualized reasonable suspicion to conduct a stop and frisk, because innocent, everyday activities such as pacing, looking into windows, and talking to another person do not inherently establish criminal conduct.\n[LAW] To proceed with a stop and frisk, the Fourth Amendment requires particularized, individualized reasonable suspicion that the person is armed and dangerous or engaged in criminal activity (444 U.S. 85, 91).\n[INFERRED] Generalized observations of ambiguous behavior near a closed commercial establishment are insufficient to meet this standard without specific, articulable facts pointing to an imminent or completed crime (529 U.S. 266, 271).\n[INFERRED] The opposing party will argue that the officer lacked individualized reasonable suspicion to conduct a stop and frisk, because innocent, everyday activities such as pacing, looking into windows, and talking to another person do not inherently establish criminal conduct, and generalized observations near a closed business cannot override the Fourth Amendment's requirement for particularized articulable suspicion."
+      }
+    }
+  ]
+}

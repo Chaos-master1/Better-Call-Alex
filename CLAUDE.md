@@ -331,11 +331,11 @@ verifier/              G2 runtime Python: eyecite subprocess bridge (ADR-001),
 app/                   Next.js + TypeScript
   cli.ts               alex lookup / search / run
   lib/db.ts  lib/statute.ts (G4)  lib/llm.ts  lib/app_db.ts
-  lib/retrieval/  lib/verify/ (core.ts + sync/async bridges)  lib/agents/
-  lib/calc/  lib/draft.ts  lib/render.ts
+  lib/retrieval/  lib/verify/ (core.ts + sync/async bridges + pins.ts + support.ts)  lib/agents/
+  lib/calc/  lib/draft.ts  lib/render.ts  lib/agents/repair.ts (verify-then-revise)
   app/                 routes, page, error boundary
 evals/                 golden sets + runners (retrieval p@10, latency, G2
-                       fixtures, G3 five-pattern harness with --offline mode)
+                       fixtures, G3 six-pattern harness with --offline/--only)
 data/                  corpus.sqlite, app.sqlite — gitignored
 logs/                  committed run evidence: g3-report.json, g4-report.json,
                        g4-statutes-spotcheck.json, g5-report.json,
@@ -377,7 +377,7 @@ No gate begins before the previous one's verification passes.
 | **G1** | Retrieval + `alex search`: BM25 × authority × parentheticals, passages with offsets | A 30-query hand-built golden set (doctrine, citation lookup, fact pattern, jurisdiction filter) plus LegalBench-RAG (6,858 expert-annotated query/span pairs) for retrieval plumbing — its corpus is contracts, not case law, so the hand-built set is the real quality measure. Record precision@10 — this is the baseline every later change is measured against. p95 latency < 500 ms. |
 | **G2** | **The Verifier** | Adversarial fixtures: fabricated citations, real case / invented quote, real quote / wrong case, one-word-altered quotes, correct cites to overruled cases. **100% catch rate on fabrications is the gate.** Treatment-scan recall checked against `casehold` (2,400 attorney-annotated overruling-vs-nonoverruling sentences). Unit tests, no LLM. |
 | **G3** | The four agents + UI. The 60-second demo. | Five real fact patterns end to end. Every sentence either carries a resolving pin cite or is visibly struck through. The Adversary returns real opposing authority. Nothing reaches the UI ungated by G2. |
-| **G4** — **COMPLETE** (2026-09-02, one environment-conditional item) | Statutes (eCFR + US Code) + deterministic calculators | 20/20 sections spot-checked against the live eCFR API (`logs/g4-statutes-spotcheck.json`); 8,621 eCFR sections loaded; calculator tests 36/36 (leap years, cross-year weekend/holiday rolls, tolling fixed-point). US Code adapter + parser are fixture-tested but not live-loaded — uscode.house.gov is unreachable from the dev network. Evidence: `logs/g4-report.json`, `docs/g4-statutes.md`. |
+| **G4** — **COMPLETE** (2026-09-02; US Code leg closed 2026-09-24) | Statutes (eCFR + US Code) + deterministic calculators | 20/20 sections spot-checked against the live eCFR API (`logs/g4-statutes-spotcheck.json`); 8,621 eCFR sections; calculator tests 36/36 (leap years, cross-year weekend/holiday rolls, tolling fixed-point). US Code: uscode.house.gov is unreachable from the dev network, so title 42 was loaded from the official govinfo package via the `usc-govinfo` stage — 8,044 sections, and `42 U.S.C. § 1983` now resolves and verifies end-to-end. Evidence: `logs/g4-report.json`, `docs/g4-statutes.md`. |
 | **G5** — **COMPLETE** (2026-09-03) | Case files, drafting, DOCX export | Motion end to end on case 32 (G3 live run): 4/4 citations resolve through the export gate; 28-paragraph `.docx` with banner + appendix; HTTP 200 with documents + audit rows persisted; fabricated `494 U.S. 560` refused 409 with zero side effects. DOCX only — no PDF path (react-pdf silently ignores `whiteSpace: pre-wrap`; no eval demands a second format). Evidence: `logs/g5-report.json`, `logs/g5-motion.docx`, `docs/g5-export.md`. |
 
 G2 precedes G3 deliberately. Without a proven Verifier, the agents are just

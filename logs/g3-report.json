@@ -1,68 +1,92 @@
 {
-  "generated_at": "2026-09-08T14:01:08.233Z",
+  "generated_at": "2026-09-24T22:41:22.217Z",
   "offline": false,
-  "patterns": 5,
+  "patterns": 6,
   "results": [
     {
       "id": "g3-01-motel-1983",
       "status": "pass",
-      "ms": 1465030,
-      "overall": "fail",
-      "verified": 9,
-      "total": 14,
+      "ms": 34942,
+      "overall": "pass",
+      "verified": 15,
+      "total": 15,
       "adversary_hits": 5,
-      "research_hits": 24,
-      "model": "qwen3.5:9b",
-      "issues": []
+      "research_hits": 18,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-02-terry-stop",
       "status": "pass",
-      "ms": 403468,
+      "ms": 22751,
       "overall": "pass",
-      "verified": 16,
-      "total": 16,
+      "verified": 20,
+      "total": 20,
       "adversary_hits": 5,
-      "research_hits": 17,
-      "model": "qwen3.5:9b",
-      "issues": []
+      "research_hits": 24,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-03-tarasoff",
       "status": "pass",
-      "ms": 332196,
-      "overall": "fail",
-      "verified": 8,
-      "total": 11,
+      "ms": 20995,
+      "overall": "pass",
+      "verified": 14,
+      "total": 14,
       "adversary_hits": 5,
-      "research_hits": 13,
-      "model": "qwen3.5:9b",
-      "issues": []
+      "research_hits": 14,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-04-personal-jurisdiction",
       "status": "pass",
-      "ms": 454260,
-      "overall": "fail",
-      "verified": 13,
+      "ms": 25608,
+      "overall": "pass",
+      "verified": 19,
       "total": 19,
       "adversary_hits": 5,
-      "research_hits": 23,
-      "model": "qwen3.5:9b",
-      "issues": []
+      "research_hits": 22,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
     },
     {
       "id": "g3-05-regulatory-taking",
       "status": "pass",
-      "ms": 361558,
-      "overall": "fail",
-      "verified": 6,
-      "total": 9,
+      "ms": 28316,
+      "overall": "pass",
+      "verified": 13,
+      "total": 13,
+      "adversary_hits": 5,
+      "research_hits": 12,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
+    },
+    {
+      "id": "g3-06-chain-cites",
+      "status": "pass",
+      "ms": 21175,
+      "overall": "pass",
+      "verified": 15,
+      "total": 15,
       "adversary_hits": 5,
       "research_hits": 15,
-      "model": "qwen3.5:9b",
-      "issues": []
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": []
     }
   ],
+  "gate": {
+    "verified_rate": 1,
+    "baseline_rate": 0.9008264462809917,
+    "tolerance": 0.05,
+    "regression": false
+  },
   "overall": "pass"
 }

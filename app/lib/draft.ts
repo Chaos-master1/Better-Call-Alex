@@ -7,6 +7,7 @@
  */
 
 import type { RenderedDraft } from "./render.js";
+import { TREATMENT_LABELS } from "./verify/core.js";
 import type { IntakeOutput, AnalystOutput, AdversaryOutput, ResearcherOutput } from "./agents/index.js";
 import type { VerificationCertificate } from "./certificate.js";
 import { IRAC_MARKER, COUNTER_ARGUMENT_MARKER, ANY_MARKER, iracFieldOf } from "./markers.js";
@@ -48,12 +49,18 @@ export interface DraftDoc {
     case_name: string | null;
     verified: boolean;
     inferred_treatment: string[];
+    /** F1 good-law: strike-grade proven signal (same labels; from the
+     *  strict treatment_proven table). Overruled-family proven signal is
+     *  surfaced as a hard warning in UI/DOCX — the sentence strike itself
+     *  happens in render. */
+    proven_treatment?: string[];
     /** citation maps to >1 cluster — the cite alone is not unique */
     ambiguous?: boolean;
   }>;
   verification: {
     overall: RenderedDraft["overall"];
     summary: RenderedDraft["report"]["summary"];
+    verdict: RenderedDraft["verdict"];
   };
   /** Machine-checkable proof artifact (Phase A): digest of THIS document,
    *  per-citation verdicts, engine provenance, and the append-only audit
@@ -116,6 +123,10 @@ export function draftDocument(
       case_name: c.case_name ?? null,
       verified: c.status === "verified",
       inferred_treatment: c.inferred_treatment ?? [],
+      proven_treatment:
+        c.proven_treatment != null
+          ? TREATMENT_LABELS.filter((t) => c.proven_treatment! & t.bit).map((t) => t.label)
+          : undefined,
       ambiguous: (c.ambiguous_cluster_ids?.length ?? 0) > 1,
     }));
 
@@ -149,11 +160,17 @@ export function draftDocument(
       // only problem is a struck sentence (or with none of either) would
       // serialize an unhelpful {}. Sentence verdicts are draft-layer facts,
       // so they are folded in here — summary is never empty.
-      const summary = { ...rendered.report.summary };
-      const struck = cleanSentences.filter((s) => !s.verified).length;
-      if (struck > 0) summary["sentence:struck"] = struck;
-      summary["sentence:verified"] = cleanSentences.length - struck;
-      return { overall: rendered.overall, summary };
+      return {
+        overall: rendered.overall,
+        summary: rendered.verdict
+          ? {
+              ...rendered.report.summary,
+              "sentence:struck": rendered.verdict.sentences_struck,
+              "sentence:verified": rendered.verdict.sentences_verified,
+            }
+          : rendered.report.summary,
+        verdict: rendered.verdict,
+      };
     })(),
     generated_at: new Date().toISOString(),
   };

@@ -45,7 +45,21 @@ function sampleDraft(): DraftDoc {
     authority_appendix: [
       { citation: "410 U.S. 113", case_name: "Roe v. Wade", verified: true, inferred_treatment: [] },
     ],
-    verification: { overall: "fail", summary: {} },
+    verification: {
+      overall: "fail",
+      summary: {},
+      verdict: {
+        overall: "fail",
+        sentences_total: 2,
+        sentences_verified: 1,
+        sentences_struck: 1,
+        citations_extracted: 0,
+        citations_verified: 0,
+        quotes_checked: 0,
+        quotes_verified: 0,
+        failures: [{ index: 1, tag: "LAW", reason: "x" }],
+      },
+    },
     generated_at: "2026-09-03T00:00:00.000Z",
   };
 }

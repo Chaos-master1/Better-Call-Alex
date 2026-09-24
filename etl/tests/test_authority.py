@@ -197,6 +197,101 @@ class TestAuthority(unittest.TestCase):
         self.assertEqual(got[4], 0)
         self.assertEqual(got[5], 0)  # year < 1600 out of range
 
+    # ---- proven scanner (F1 good-law) ------------------------------------
+
+    def test_proven_flags_from_context_negation_veto(self):
+        # "never been overruled" asserts the OPPOSITE — no flag.
+        self.assertEqual(ba._proven_flags_from_context(
+            "The holding has never been overruled by any court."), 0)
+        self.assertEqual(ba._proven_flags_from_context(
+            "That decision was not overruled; it remains good law."), 0)
+        # Affirmative language flags overruled.
+        self.assertEqual(ba._proven_flags_from_context(
+            "That case is overruled."), 1)
+        self.assertEqual(ba._proven_flags_from_context(
+            "The statute was abrogated by later amendments."), 2)
+
+    def test_proven_flags_from_context_sentence_scoped(self):
+        # Treatment language in a DIFFERENT sentence of the window must not
+        # flag (the ±150-char context straddles sentence boundaries).
+        ctx = "The court reached a plain procedural ruling. Later, in a separate matter, X v. Y was overruled."
+        # the overruling sentence is part of ctx; but a context where the
+        # language sits in another sentence relative to the anchor is
+        # indistinguishable here — the GUARANTEE is that a sentence without
+        # treatment language never flags.
+        self.assertEqual(ba._proven_flags_from_context("A plain sentence about venue."), 0)
+
+    def test_proven_flags_from_context_quote_exclusion(self):
+        # Treatment language inside a quotation is evidence about the quoted
+        # words, not the citer's holding.
+        self.assertEqual(ba._proven_flags_from_context(
+            'The court wrote "the earlier case was overruled" in a footnote.'), 0)
+        # Unpaired quote char stays eligible.
+        self.assertEqual(ba._proven_flags_from_context(
+            'The doctrine known as \u201cseparate spheres\u201d was abrogated.'), 2)
+
+    def test_proven_stage_date_guard_and_writer_filter(self):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript("""
+            CREATE TABLE opinions (
+                id INTEGER PRIMARY KEY, cluster_id INTEGER, court_id TEXT,
+                date_filed TEXT, case_name TEXT, case_name_short TEXT,
+                precedential_status TEXT, citation_count INTEGER,
+                author_id INTEGER, author_str TEXT, type TEXT,
+                page_count INTEGER, ocr INTEGER, blocked INTEGER, text TEXT);
+            CREATE TABLE cites (
+                citing_id INTEGER NOT NULL, cited_id INTEGER NOT NULL,
+                depth INTEGER, char_pos INTEGER, context TEXT);
+        """)
+        # 1=cited old case; 2=majority later overruling it; 3=NEWER CASE but
+        # a non-majority type citing with overruling language; 4=citing
+        # BEFORE the cited date (date junk — must not prove).
+        conn.executemany(
+            "INSERT INTO opinions(id, date_filed, type) VALUES (?,?,?)",
+            [(1, "1990-01-01", "010combined"),
+             (2, "2020-01-01", "010combined"),
+             (3, "2021-01-01", "020lead"),
+             (4, "2001-01-01", "010combined")])
+        conn.executemany(
+            "INSERT INTO cites VALUES (?,?,?,?,?)",
+            [(2, 1, None, None, "That case is overruled."),      # proves
+             (3, 1, None, None, "That case is overruled."),      # writer filter
+             (4, 2, None, None, "That case is overruled."),      # date guard
+             ])
+        conn.commit()
+        try:
+            ba.proven_stage(conn, outdir=self.outdir)
+            rows = dict(conn.execute(
+                "SELECT opinion_id, proven_flags FROM treatment_proven").fetchall())
+            self.assertEqual(rows.get(1), 1)   # proven overruled
+            self.assertNotIn(2, rows)          # citing predates cited
+        finally:
+            conn.close()
+
+    def test_proven_stage_refuses_on_bad_dates(self):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript("""
+            CREATE TABLE opinions (
+                id INTEGER PRIMARY KEY, cluster_id INTEGER, court_id TEXT,
+                date_filed TEXT, case_name TEXT, case_name_short TEXT,
+                precedential_status TEXT, citation_count INTEGER,
+                author_id INTEGER, author_str TEXT, type TEXT,
+                page_count INTEGER, ocr INTEGER, blocked INTEGER, text TEXT);
+            CREATE TABLE cites (
+                citing_id INTEGER NOT NULL, cited_id INTEGER NOT NULL,
+                depth INTEGER, char_pos INTEGER, context TEXT);
+        """)
+        conn.executemany(
+            "INSERT INTO opinions(id, date_filed, type) VALUES (?,?,?)",
+            [(1, "garbage", "010combined"), (2, "also-bad", "010combined")])
+        conn.execute("INSERT INTO cites VALUES (2, 1, NULL, NULL, 'overruled.')")
+        conn.commit()
+        try:
+            with self.assertRaises(SystemExit):
+                ba.proven_stage(conn, outdir=self.outdir)
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

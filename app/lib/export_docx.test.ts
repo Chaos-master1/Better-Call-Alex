@@ -76,6 +76,17 @@ function sampleDraft(): DraftDoc {
     verification: {
       overall: "fail",
       summary: { citations: 2, verified: 1 },
+      verdict: {
+        overall: "fail",
+        sentences_total: 3,
+        sentences_verified: 2,
+        sentences_struck: 1,
+        citations_extracted: 2,
+        citations_verified: 1,
+        quotes_checked: 0,
+        quotes_verified: 0,
+        failures: [{ index: 1, tag: "LAW", reason: "unresolved_citation" }],
+      },
     },
     generated_at: "2026-09-03T00:00:00.000Z",
   };

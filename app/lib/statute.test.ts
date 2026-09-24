@@ -85,14 +85,32 @@ test("a verified statute citation with a true quote passes the gate", () => {
   assert.equal(report.overall, "pass");
 });
 
-test("an unloaded statute section fails the draft as unresolved", () => {
+test("a wrong section under a loaded title fails the draft as unresolved", () => {
+  // Title 42 IS loaded, so the corpus can judge the section: a miss here is
+  // the cite's fault (unresolved_citation), not the corpus's.
   const db = memoryDb(true);
-  const text = "Congress addressed this in 44 U.S.C. § 9999, which does not exist in the loaded corpus.";
+  const text = "Congress addressed this in 42 U.S.C. § 9999, which does not exist in the loaded corpus.";
   const report = analyzeCitationsAndQuotes(db, [], text);
   const stat = report.citations.find((c) => c.form === "statute");
   assert.ok(stat);
   assert.equal(stat!.status, "unresolved_citation");
   assert.equal(report.overall, "fail");
+});
+
+test("a statute from an entirely unloaded title is statute_not_loaded, not unresolved", () => {
+  // The fixture loads 42 U.S.C. and 12 C.F.R. only; title 29 U.S.C. is a
+  // corpus gap, so the corpus cannot judge the cite and must say that
+  // instead of implying the cite itself is wrong.
+  const db = memoryDb(true);
+  const text = "Safety standards follow 29 U.S.C. § 1910.1200 as the rule.";
+  const report = analyzeCitationsAndQuotes(db, [], text);
+  const stat = report.citations.find((c) => c.form === "statute");
+  assert.ok(stat);
+  assert.equal(stat!.status, "statute_not_loaded");
+  // Unjudgeable, not wrong: like out_of_corpus it strikes the sentence
+  // (render fails any status !== "verified") without failing the draft —
+  // only PROVEN problems (unresolved_citation, bad quotes) fail overall.
+  assert.equal(report.overall, "pass");
 });
 
 test("a fabricated statute quote fails as quote_not_found", () => {

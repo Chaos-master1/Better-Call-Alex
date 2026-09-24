@@ -29,6 +29,8 @@ export default function Home() {
   // mode once /api/engine answers (the toggle only widens choice when a
   // key is configured).
   const [engineMode, setEngineMode] = useState("local");
+  // Comma-separated party names to redact from cloud payloads (ADR-004 §2.4).
+  const [redact, setRedact] = useState("");
   const [engineInfo, setEngineInfo] = useState<{
     env_mode: string;
     cloud_available: boolean;
@@ -94,7 +96,13 @@ export default function Home() {
         const r = await fetch("/api/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ facts: payload, engineMode }),
+          body: JSON.stringify({
+            facts: payload,
+            engineMode,
+            ...(redact.trim()
+              ? { redactParties: redact.split(",").map((s) => s.trim()).filter(Boolean) }
+              : {}),
+          }),
           signal: ac.signal,
         });
         if (gen !== genRef.current) return; // superseded — drop stale result
@@ -158,6 +166,8 @@ export default function Home() {
           setFacts={setFacts}
           forum={forum}
           setForum={setForum}
+          redact={redact}
+          setRedact={setRedact}
           engineMode={engineMode}
           setEngineMode={setEngineMode}
           engineInfo={engineInfo}

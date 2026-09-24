@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-22T19:24:48.532Z",
+  "generated_at": "2026-09-23T01:47:25.444Z",
   "env_mode": "local",
-  "scope": "full: all five patterns",
+  "scope": "partial: patterns g3-01-motel-1983 (--only)",
   "note": "Objective metrics only; no LLM judge (circularity). Side-by-side drafts are for human review. A/B per ADR-004 §2.9.",
   "patterns": [
     {
@@ -9,13 +9,13 @@
       "label": "Motel public-accommodations / §1983 state action",
       "local": {
         "engine_mode": "local",
-        "ms": 815415,
-        "sentences": 17,
-        "verified": 6,
-        "unverified": 11,
+        "ms": 438199,
+        "sentences": 16,
+        "verified": 7,
+        "unverified": 9,
         "law_sentences": 5,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 0.23076923076923078,
+        "law_with_resolving_pin": 2,
+        "citation_resolution_rate": 0.16666666666666666,
         "element_checklist_size": 3,
         "adversary_counter_authority": 5,
         "overall": "fail",
@@ -41,17 +41,17 @@
             "model": "local:qwen3:14b"
           }
         ],
-        "draft_text": "[RECORD] Plaintiff is a 67-year-old Black man.\n[RECORD] Plaintiff checked into a motel in Atlanta.\n[RECORD] Motel manager called police and reported plaintiff as a 'suspicious person' after seeing him in the lobby.\n[RECORD] Police officers arrived, asked plaintiff to leave, and when he refused, arrested him for trespass.\n[RECORD] Plaintiff was held for 9 hours and released without charges.\n[LAW] Under 42 U.S.C. § 1983, a person may be held liable for deprivations of constitutional rights caused by a government official acting under the color of state law.\n[LAW] A false arrest claim requires a showing that the arresting officers lacked probable cause for the arrest.\n[INFERRED] The issue of whether the arrest was lawful depends on whether the motel manager's report provided sufficient probable cause for the officers to arrest the plaintiff.\n[INFERRED] Without further information on the nature of the plaintiff's conduct or the specific details of the motel manager's report, it is currently unknown whether the arrest was lawful or whether a § 1983 claim for false arrest may be established.\n[INFERRED] Whether the motel manager's report of the plaintiff as a 'suspicious person' and the subsequent arrest by police officers for trespassing constitutes a violation of the plaintiff's constitutional rights under 42 U.S.C. § 1983.\n[INFERRED] Under 42 U.S.C. § 1983, a person may be held liable for deprivations of constitutional rights caused by a government official acting under the color of state law. A false arrest claim requires a showing that the arresting officers lacked probable cause for the arrest (Groman v. Township Of Manalapan, 51 F.3d 141, 147 (1995)).\n[INFERRED] The plaintiff was arrested for trespassing after the motel manager reported him as a 'suspicious person.' To determine whether this constitutes a violation of the plaintiff's constitutional rights, it must be assessed whether the police officers had probable cause for the arrest. If the motel manager's report was insufficient to establish probable cause, the arrest may be deemed unlawful, potentially giving rise to a § 1983 claim for false arrest (Groman v. Township Of Manalapan, 51 F.3d 141, 147 (1995)).\n[INFERRED] The issue of whether the arrest was lawful depends on whether the motel manager's report provided sufficient probable cause for the officers to arrest the plaintiff. Without further information on the nature of the plaintiff's conduct or the specific details of the motel manager's report, it is currently unknown whether the arrest was lawful or whether a § 1983 claim for false arrest may be established.\n[LAW] The opposing party would argue that the arrest did not violate the plaintiff's constitutional rights because the police officers had probable cause to arrest him for trespassing, which is a complete defense to a § 1983 claim for false arrest\n[LAW] The motel manager's report of the plaintiff as a 'suspicious person' may have provided sufficient information for the officers to reasonably believe that the plaintiff was unlawfully present on the motel's property, thereby satisfying the probable cause standard\n[LAW] Furthermore, even if the officers did not have actual probable cause, they may still be shielded from liability under the doctrine of arguable probable cause, which is the standard used in qualified immunity analyses\n[INFERRED] The opposing party would argue that the arrest did not violate the plaintiff's constitutional rights because the police officers had probable cause to arrest him for trespassing, which is a complete defense to a § 1983 claim for false arrest (Weyant v. Okst, 101 F.3d 845, 852 (2d Cir. 1996)). The motel manager's report of the plaintiff as a 'suspicious person' may have provided sufficient information for the officers to reasonably believe that the plaintiff was unlawfully present on the motel's property, thereby satisfying the probable cause standard (Jenkins v. City Of New York, 478 F.3d 152, 171 (2d Cir. 2007)). Furthermore, even if the officers did not have actual probable cause, they may still be shielded from liability under the doctrine of arguable probable cause, which is the standard used in qualified immunity analyses (Jones v. Cannon, 196 F.3d 1223, 1231 (11th Cir. 1999))."
+        "draft_text": "[RECORD] Plaintiff is a 67-year-old Black man.\n[RECORD] Plaintiff checked into a motel in Atlanta.\n[RECORD] Motel manager called police and reported plaintiff as a 'suspicious person' after seeing him in the lobby.\n[RECORD] Police officers arrived, asked plaintiff to leave, and when he refused, arrested him for trespass.\n[RECORD] Plaintiff was held for 9 hours and released without charges.\n[LAW] Under 42 U.S.C. § 1983, a person may be held liable for deprivations of constitutional rights caused by a government official acting under the color of state law.\n[LAW] A false arrest claim requires a showing that the arresting officers lacked probable cause for the arrest.\n[LAW] The legality of the arrest depends on whether the police had probable cause to believe the plaintiff had committed a crime.\n[INFERRED] If the motel manager's report was the sole basis for the arrest, and there was no other evidence of criminal activity, the arrest may have been without probable cause, potentially violating the plaintiff's Fourth Amendment rights.\n[INFERRED] Whether the motel manager's report of the plaintiff as a 'suspicious person' and the subsequent arrest by police officers for trespassing violated the plaintiff's constitutional rights under 42 U.S.C. § 1983.\n[INFERRED] Under 42 U.S.C. § 1983, a person may be held liable for deprivations of constitutional rights caused by a government official acting under the color of state law. A false arrest claim requires a showing that the arresting officers lacked probable cause for the arrest (Groman v. Township Of Manalapan, 51 F.3d 140, 145 (1st Cir. 1995)).\n[INFERRED] The plaintiff was arrested for trespassing after the motel manager reported him as a 'suspicious person.' The legality of the arrest depends on whether the police had probable cause to believe the plaintiff had committed a crime. If the motel manager's report was the sole basis for the arrest, and there was no other evidence of criminal activity, the arrest may have been without probable cause, potentially violating the plaintiff's Fourth Amendment rights (John Betts v. Martha Anne Shearman, 752 F.3d 136, 141 (2d Cir. 2014)).\n[INFERRED] Based on the available information, it is unclear whether the arrest was supported by probable cause. Further evidence is needed to determine whether the plaintiff's constitutional rights were violated under 42 U.S.C. § 1983.\n[LAW] Under federal law, probable cause is a complete defense to a claim of false arrest under 42 U.S.C. § 1983\n[LAW] even if the arrest was based on insufficient evidence, the officers may be shielded by qualified immunity if they had arguable probable cause\n[INFERRED] The opposing party would argue that the arrest was justified by probable cause, as the motel manager's report of the plaintiff as a 'suspicious person' could reasonably support the officers' belief that the plaintiff had committed trespass. Under [LAW] federal law, probable cause is a complete defense to a claim of false arrest under 42 U.S.C. § 1983 (John Betts v. Martha Anne Shearman, 752 F.3d 136, 141 (2d Cir. 2014)). Furthermore, even if the arrest was based on insufficient evidence, the officers may be shielded by qualified immunity if they had arguable probable cause (Jones v. Cannon, 193 F.3d 1263, 1271 (11th Cir. 1999))."
       },
       "cloud": {
         "engine_mode": "cloud",
-        "ms": 51130,
-        "sentences": 14,
+        "ms": 80224,
+        "sentences": 16,
         "verified": 6,
-        "unverified": 8,
+        "unverified": 10,
         "law_sentences": 3,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 0.21428571428571427,
+        "law_with_resolving_pin": 2,
+        "citation_resolution_rate": 0.3,
         "element_checklist_size": 3,
         "adversary_counter_authority": 5,
         "overall": "fail",
@@ -77,311 +77,7 @@
             "model": "cloud:gemini-flash-lite-latest"
           }
         ],
-        "draft_text": "[RECORD] A 67-year-old Black man checked into a motel in Atlanta.\n[RECORD] The motel manager saw him in the lobby, called the police, and reported him as a suspicious person.\n[RECORD] Officers arrived and asked him to leave, but the man refused to leave and was arrested for trespass.\n[RECORD] He was held for 9 hours and released without charges.\n[LAW] To state a claim under 42 U.S.C. § 1983, a plaintiff must show the deprivation of a federal right committed by a person acting under color of state law (401 U.S. 1, 107).\n[LAW] Claims for false arrest under § 1983 are essentially claims alleging a seizure of the person in violation of the Fourth Amendment (332 F.3d 1206, 1210).\n[INFERRED] Because the record lacks specific details regarding whether the motel acted in concert with law enforcement to establish state action, the viability of the § 1983 claim cannot yet be fully confirmed.\n[INFERRED] Whether a 67-year-old Black man arrested for trespass after refusing to leave a motel upon the manager's call states a viable claim for relief under 42 U.S.C. § 1983 and associated false arrest principles.\n[INFERRED] To establish liability under 42 U.S.C. § 1983, a plaintiff must demonstrate that the conduct was committed by a person acting under color of state law and that the conduct deprived the plaintiff of rights, privileges, or immunities secured by the Constitution or laws of the United States (401 U.S. 1, 107). Furthermore, a false arrest claim brought under § 1983 is essentially a claim alleging a seizure of the person in violation of the Fourth Amendment (332 F.3d 1206, 1210).\n[INFERRED] Here, the plaintiff is a 67-year-old Black man who checked into a motel, was reported as a suspicious person by the manager, was asked to leave by officers, refused, and was subsequently arrested and held for nine hours before being released without charges. However, it remains unknown whether the motel or its manager was operating under color of state law, and the exact statements and actions of the officers are currently unverified.\n[INFERRED] Because crucial facts regarding state action and the specific conduct of the officers remain unknown, it cannot yet be definitively determined whether the § 1983 claim will survive summary judgment or a motion to dismiss.\n[LAW] To establish liability under 42 U.S.C. § 1983, a plaintiff must demonstrate that the conduct was committed by a person acting under color of state law (383 U.S. 787, 794).\n[INFERRED] Private persons invoking police assistance or reporting suspected unlawful activity do not generally convert their private conduct into state action under Section 1983.\n[INFERRED] The opposing party will argue that the motel manager and the motel itself are private actors who do not act under color of state law for purposes of 42 U.S.C. § 1983 merely by calling the police and reporting a suspicious person, as private parties summoning law enforcement do not automatically become state actors under Section 1983."
-      }
-    },
-    {
-      "id": "g3-02-terry-stop",
-      "label": "Terry stop-and-frisk, reasonable suspicion",
-      "local": {
-        "engine_mode": "local",
-        "ms": 643302,
-        "sentences": 23,
-        "verified": 19,
-        "unverified": 4,
-        "law_sentences": 9,
-        "law_with_resolving_pin": 5,
-        "citation_resolution_rate": 1,
-        "element_checklist_size": 2,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "researcher",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "analyst",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          },
-          {
-            "stage": "adversary",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          }
-        ],
-        "draft_text": "[RECORD] An officer was on patrol at 11pm.\n[RECORD] The officer saw a man pacing in front of a closed jewelry store.\n[RECORD] The man was repeatedly peering into the window.\n[RECORD] The man was conferring with another man.\n[RECORD] The officer stopped the man.\n[RECORD] The officer patted the man's outer clothing.\n[RECORD] The officer felt a hard object which turned out to be a pistol.\n[RECORD] The man had no permit for the weapon.\n[LAW] An officer may conduct a brief, investigatory stop when the officer has a reasonable, articulable suspicion that criminal activity is afoot.\n[LAW] Reasonable suspicion can arise from information that is less reliable than that required to show probable cause.\n[LAW] The Fourth Amendment requires at least a particularized and objective basis for suspecting the person stopped of criminal activity.\n[LAW] Police can stop and briefly detain a person for investigative purposes if the officer has a reasonable suspicion supported by articulable facts that criminal activity may be afoot, even if the officer lacks probable cause.\n[INFERRED] The behavior described is not definitively suspicious on its own and lacks specific, articulable facts that would support a reasonable belief that criminal activity was occurring.\n[INFERRED] Whether the officer had reasonable suspicion to stop the man based on the observed behavior.\n[INFERRED] An officer may conduct a brief investigatory stop if there is reasonable suspicion that criminal activity is afoot. Reasonable suspicion requires specific, articulable facts that would lead a reasonable officer to believe that criminal activity is occurring or about to occur.\n[INFERRED] The officer observed the man pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man. These actions could be interpreted as suspicious behavior that might indicate criminal intent, such as casing a store for a potential robbery. However, the officer did not have any specific information linking the man to criminal activity, and the behavior alone may not be sufficient to establish reasonable suspicion under the Fourth Amendment.\n[INFERRED] Based on the facts presented, the officer's observations may not rise to the level of reasonable suspicion required to justify the stop. The behavior described is not definitively suspicious on its own and lacks specific, articulable facts that would support a reasonable belief that criminal activity was occurring.\n[LAW] The opposing party would argue that the officer's observations—pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man—constitute specific and articulable facts that reasonably support a suspicion of criminal activity, thereby justifying the investigatory stop.\n[LAW] Courts have consistently held that behavior such as casing a store, which may indicate premeditation for a crime like burglary, can provide the necessary reasonable suspicion under the Fourth Amendment.\n[LAW] In United States v. Mendenhall, the Court emphasized that reasonable suspicion requires specific and articulable facts, but did not limit the scope of what constitutes such facts\n[LAW] Similarly, in Terry v. Ohio, the Court affirmed that an officer may conduct a brief investigatory stop if there is reasonable suspicion based on specific and articulable facts\n[LAW] The officer's observations here, while not conclusive, are sufficient to support a reasonable suspicion that criminal activity was afoot, and thus the evidence obtained should not be suppressed.\n[INFERRED] The opposing party would argue that the officer's observations—pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man—constitute specific and articulable facts that reasonably support a suspicion of criminal activity, thereby justifying the investigatory stop. [LAW] Courts have consistently held that behavior such as casing a store, which may indicate premeditation for a crime like burglary, can provide the necessary reasonable suspicion under the Fourth Amendment. [LAW] In United States v. Mendenhall, the Court emphasized that reasonable suspicion requires specific and articulable facts, but did not limit the scope of what constitutes such facts (410 U.S. 113, 117). [LAW] Similarly, in Terry v. Ohio, the Court affirmed that an officer may conduct a brief investigatory stop if there is reasonable suspicion based on specific and articulable facts (392 U.S. 1, 21). [LAW] The officer's observations here, while not conclusive, are sufficient to support a reasonable suspicion that criminal activity was afoot, and thus the evidence obtained should not be suppressed."
-      },
-      "cloud": {
-        "engine_mode": "cloud",
-        "ms": 159770,
-        "sentences": 18,
-        "verified": 15,
-        "unverified": 3,
-        "law_sentences": 3,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 1,
-        "element_checklist_size": 2,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "researcher",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "analyst",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "adversary",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          }
-        ],
-        "draft_text": "[RECORD] An officer was on patrol at 11pm.\n[RECORD] The officer saw a man pacing in front of a closed jewelry store.\n[RECORD] The man repeatedly peered into the window and conferred with another man.\n[LAW] Where a police officer observes unusual conduct which leads him reasonably to conclude in light of his experience that criminal activity may be afoot, the officer may conduct a brief investigatory stop.\n[INFERRED] The defendant's actions of pacing and peering into a closed jewelry store at night closely mirror the classic casing behavior recognized in Terry.\n[RECORD] The officer stopped the man and patted his outer clothing.\n[LAW] An officer is authorized to conduct a protective patdown for weapons if he has reason to believe that the individual is armed and dangerous.\n[RECORD] The officer felt a hard object that turned out to be a pistol.\n[RECORD] The man had no permit for the pistol.\n[INFERRED] Because the stop and frisk were both supported by reasonable suspicion under the totality of the circumstances, the Fourth Amendment was not violated and suppression should be denied.\n[INFERRED] Whether a police officer has reasonable suspicion to conduct an investigatory stop and frisk under the Fourth Amendment when observing a man pacing, peering into a closed jewelry store window, and conferring with another person late at night.\n[INFERRED] An investigatory stop and frisk is constitutionally permissible under the Fourth Amendment if the officer has a reasonable suspicion supported by articulable facts that criminal activity may be afoot and that the person may be armed and dangerous (392 U.S. 1, 30).\n[INFERRED] Here, the officer observed the defendant at 11 p.m. pacing in front of a closed jewelry store, repeatedly peering into the window, and conferring with another man, which mirrors the classic casing behavior evaluated in Terry v. Ohio (392 U.S. 1, 6). This observation provided the officer with specific and articulable facts giving rise to a reasonable suspicion that a robbery or burglary was being planned (392 U.S. 1, 30). Consequently, the initial investigative stop was lawful, and the subsequent patdown of the defendant's outer clothing that revealed a hard object identified as a pistol was justified for officer safety (392 U.S. 1, 27).\n[INFERRED] The motion to suppress the weapon should be denied because both the stop and the frisk were supported by reasonable suspicion consistent with Fourth Amendment jurisprudence.\n[INFERRED] The opposing party will argue that the officer's observations amounted to nothing more than an inchoate and unparticularized hunch rather than specific, articulable facts demonstrating that criminal activity was afoot.\n[LAW] An officer must be able to articulate something more than an inchoate and unparticularized suspicion or hunch to justify a stop (392 U.S. 1, 27).\n[INFERRED] Mere ambiguous conduct like pacing and looking into windows in public places is entirely consistent with innocent behavior and fails to meet the objective justification required under the Fourth Amendment.\n[INFERRED] The opposing party will argue that the officer's observations amounted to nothing more than an inchoate and unparticularized hunch rather than specific, articulable facts demonstrating that criminal activity was afoot, as mere ambiguous conduct like pacing and looking into windows in public places is entirely consistent with innocent behavior and fails to meet the objective justification required under the Fourth Amendment."
-      }
-    },
-    {
-      "id": "g3-03-tarasoff",
-      "label": "Psychotherapist duty to warn (California)",
-      "local": {
-        "engine_mode": "local",
-        "ms": 438112,
-        "sentences": 21,
-        "verified": 13,
-        "unverified": 8,
-        "law_sentences": 4,
-        "law_with_resolving_pin": 1,
-        "citation_resolution_rate": 0.6,
-        "element_checklist_size": 4,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "researcher",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "analyst",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          },
-          {
-            "stage": "adversary",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          }
-        ],
-        "draft_text": "[RECORD] A psychotherapy patient told his therapist he intended to kill his former girlfriend.\n[RECORD] The patient named the girlfriend and stated he would go to her campus the next day.\n[RECORD] The therapist believed the threat was credible.\n[RECORD] The therapist did not warn the girlfriend or campus police.\n[RECORD] The therapist did not hospitalize the patient.\n[RECORD] The patient killed the girlfriend the next day.\n[RECORD] Her parents sued the therapist in California court.\n[LAW] Under California law, a psychotherapist has a duty to warn a reasonably identifiable victim of a serious threat of physical violence made by a patient\n[LAW] There is no monetary liability or cause of action against a psychotherapist for failing to warn or protect from a patient’s threatened violent behavior unless the patient has communicated a serious threat of physical violence against a reasonably identifiable victim or victims\n[INFERRED] The therapist may have breached a duty of care by failing to warn the girlfriend or campus police of the patient’s credible threat.\n[INFERRED] The therapist may be shielded from liability under Cal. Civ. Code § 43.92(a) if the threat was not deemed serious enough or if the victim was not reasonably identifiable.\n[INFERRED] Did the therapist breach a duty of care by failing to warn the girlfriend or campus police of the patient's credible threat to kill her?\n[INFERRED] Under California law, a psychotherapist has a duty to warn a reasonably identifiable victim of a serious threat of physical violence made by a patient (Tarasoff v. Regents of University of California, 17 Cal.3d 425, 131 Cal.Rptr. 14, 551 P.2d 334, 83 A.L.R.3d 1166). However, there is no monetary liability or cause of action against a psychotherapist for failing to warn or protect from a patient’s threatened violent behavior unless the patient has communicated a serious threat of physical violence against a reasonably identifiable victim or victims (Cal. Civ. Code § 43.92(a)).\n[INFERRED] The patient communicated a specific and credible threat to kill his former girlfriend to the therapist. The therapist did not warn the girlfriend or campus police, and the patient followed through on the threat the next day. The therapist’s failure to warn may constitute a breach of the duty imposed by Tarasoff. However, the therapist may be protected under Cal. Civ. Code § 43.92(a), which limits liability unless the threat was serious and targeted a reasonably identifiable victim.\n[INFERRED] The therapist may have breached a duty of care by failing to warn the girlfriend or campus police of the patient’s credible threat. However, the therapist may be shielded from liability under Cal. Civ. Code § 43.92(a) if the threat was not deemed serious enough or if the victim was not reasonably identifiable.\n[LAW] Under California law, a psychotherapist has a duty to warn a reasonably identifiable victim of a serious threat of physical violence made by a patient (Tarasoff v. Regents of University of California, 17 Cal.3d 425, 131 Cal.Rptr. 14, 551 P.2d 334, 83 A.L.R.3d 1166).\n[LAW] However, there is no monetary liability or cause of action against a psychotherapist for failing to warn or protect from a patient’s threatened violent behavior unless the patient has communicated a serious threat of physical violence against a reasonably identifiable victim or victims (Cal. Civ. Code § 43.92(a)).\n[INFERRED] The therapist may not be liable under California law because the patient’s threat was not communicated to the therapist in a manner that triggered the duty to warn under Tarasoff.\n[INFERRED] The therapist’s failure to warn may not constitute a breach of duty if the threat was not sufficiently specific or credible at the time it was made.\n[INFERRED] The therapist may have acted reasonably under the circumstances, and the absence of a clear duty to warn in the absence of a serious threat to a reasonably identifiable victim may shield the therapist from liability.\n[INFERRED] The therapist may not be liable under California law because the patient’s threat was not communicated to the therapist in a manner that triggered the duty to warn under Tarasoff. The therapist’s failure to warn may not constitute a breach of duty if the threat was not sufficiently specific or credible at the time it was made. Furthermore, the therapist may have acted reasonably under the circumstances, and the absence of a clear duty to warn in the absence of a serious threat to a reasonably identifiable victim may shield the therapist from liability (see Cal. Civ. Code § 43.92(a))."
-      },
-      "cloud": {
-        "engine_mode": "cloud",
-        "ms": 170296,
-        "sentences": 18,
-        "verified": 16,
-        "unverified": 2,
-        "law_sentences": 2,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 1,
-        "element_checklist_size": 4,
-        "adversary_counter_authority": 3,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "researcher",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "analyst",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "adversary",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          }
-        ],
-        "draft_text": "[RECORD] A psychotherapy patient told his therapist he intended to kill his former girlfriend.\n[RECORD] The patient named the former girlfriend and stated he would go to her campus the next day.\n[RECORD] The therapist believed the threat was credible.\n[RECORD] The therapist did not warn the girlfriend or campus police.\n[RECORD] The therapist did not hospitalize the patient.\n[RECORD] The patient killed the girlfriend the next day.\n[RECORD] The parents of the girlfriend sued the therapist in California court.\n[LAW] When a therapist determines, or pursuant to the standards of his profession should determine, that his patient presents a serious danger of violence to another, he incurs an obligation to use reasonable care to protect the intended victim against such danger (17 Cal.3d 425, 431).\n[LAW] The discharge of this duty may call for the therapist to warn the intended victim or others likely to apprise the victim of the danger, to notify the police, or to take whatever other steps are reasonably necessary under the circumstances (17 Cal.3d 425, 431).\n[INFERRED] The therapist established a professional relationship with the patient that triggered Tarasoff-style duties upon receiving the explicit, credible threat against a named individual.\n[INFERRED] By failing to warn the victim or law enforcement, the therapist fell below the standard of care required of mental health professionals under California law.\n[INFERRED] Under California law, whether a psychotherapist incurs a legal duty to protect or warn an intended victim when a patient expresses a credible threat of violence against a readily identifiable individual.\n[INFERRED] When a psychotherapist determines, or pursuant to the standards of the profession should determine, that a patient presents a serious danger of violence to another, the therapist incurs an obligation to use reasonable care to protect the intended victim against such danger, which may include warning the victim or notifying the police (17 Cal.3d 425, 431).\n[INFERRED] Here, the psychotherapy patient explicitly told his therapist that he intended to kill his former girlfriend, named her specifically, and stated he would go to her campus the next day. The therapist believed the threat was credible, yet failed to warn the girlfriend, campus police, or hospitalize the patient. Because the patient carried out the threat and killed the girlfriend the next day, the therapist's failure to act breached the professional duty of care established under California law.\n[INFERRED] Yes, the therapist owed a duty under Tarasoff to protect or warn the foreseeable victim, and the parents have a viable wrongful death and professional negligence claim for the therapist's failure to discharge that duty.\n[INFERRED] The opposing party would argue that the retrieval results do not contain binding California authorities establishing a limitation or rejection of the Tarasoff duty applicable to these specific facts.\n[INFERRED] Consequently, this leaves the therapist's statutory and common law duty to protect foreseeable victims intact under California jurisprudence.\n[INFERRED] The opposing party would argue that the retrieval results do not contain binding California authorities establishing a limitation or rejection of the Tarasoff duty applicable to these specific facts, leaving the therapist's statutory and common law duty to protect foreseeable victims intact under California jurisprudence."
-      }
-    },
-    {
-      "id": "g3-04-personal-jurisdiction",
-      "label": "Personal jurisdiction, minimum contacts / stream of commerce",
-      "local": {
-        "engine_mode": "local",
-        "ms": 430461,
-        "sentences": 20,
-        "verified": 13,
-        "unverified": 7,
-        "law_sentences": 6,
-        "law_with_resolving_pin": 1,
-        "citation_resolution_rate": 0.4,
-        "element_checklist_size": 2,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "researcher",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "analyst",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          },
-          {
-            "stage": "adversary",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          }
-        ],
-        "draft_text": "[RECORD] Defendant is a small Oregon manufacturer.\n[RECORD] Defendant sells specialty bicycle components exclusively through its website.\n[RECORD] Defendant has no offices or employees in Texas.\n[RECORD] Over two years, Defendant shipped 200 orders to Texas customers.\n[RECORD] Defendant earned $40,000 from Texas sales.\n[RECORD] Defendant ran targeted Instagram ads to Texas cyclists.\n[RECORD] Plaintiff is a Texas buyer injured by an allegedly defective component.\n[RECORD] Plaintiff sued in Texas state court.\n[RECORD] Defendant moved to dismiss for lack of personal jurisdiction.\n[LAW] A Texas court may assert personal jurisdiction over a nonresident defendant only if the requirements of due process under the Fourteenth Amendment to the United States Constitution and of the Texas long-arm statute are satisfied.\n[LAW] Personal jurisdiction over a nonresident defendant is constitutional when two conditions are met: (1) the defendant has established minimum contacts with the forum state and (2) the exercise of jurisdiction comports with traditional notions of fair play and substantial justice.\n[LAW] The likelihood that personal jurisdiction can be constitutionally exercised is directly proportionate to the nature and quality of commercial activity that an entity conducts over the Internet.\n[LAW] Texas courts have consistently held that telephone calls, emails, and mail between a nonresident defendant and a Texas resident are insufficient minimum contacts to establish specific jurisdiction.\n[INFERRED] Does the Texas court have personal jurisdiction over the Oregon manufacturer?\n[INFERRED] A Texas court may assert personal jurisdiction over a nonresident defendant only if the requirements of due process under the Fourteenth Amendment to the United States Constitution and of the Texas long-arm statute are satisfied (Michel v. Rocket Engineering Corp., 948 S.W.2d 892, 892). Personal jurisdiction over a nonresident defendant is constitutional when two conditions are met: (1) the defendant has established minimum contacts with the forum state and (2) the exercise of jurisdiction comports with traditional notions of fair play and substantial justice (Choice Auto Brokers, Inc. v. Dawson, 83 S.W.3d 807, 807).\n[INFERRED] The Oregon manufacturer has no offices or employees in Texas, but it has sold products to Texas customers and run targeted Instagram ads to Texas cyclists. These actions may establish minimum contacts with Texas. However, the manufacturer's limited sales and advertising efforts may not be sufficient to satisfy the due process requirements for personal jurisdiction (Jerry Wilkerson v. RSL Funding, L.L.C., 76 S.W.3d 496, 507).\n[INFERRED] The Texas court may not have personal jurisdiction over the Oregon manufacturer because the defendant's contacts with Texas are insufficient to satisfy the due process requirements.\n[LAW] The Oregon manufacturer's targeted Instagram ads to Texas cyclists and its sales to Texas customers establish sufficient minimum contacts with Texas to satisfy due process requirements.\n[LAW] The Texas court may assert personal jurisdiction over the defendant because the manufacturer intentionally directed its activities toward Texas residents, and the injury alleged by the plaintiff arises out of those activities.\n[INFERRED] The Oregon manufacturer's targeted Instagram ads to Texas cyclists and its sales to Texas customers establish sufficient minimum contacts with Texas to satisfy due process requirements. The Texas court may assert personal jurisdiction over the defendant because the manufacturer intentionally directed its activities toward Texas residents, and the injury alleged by the plaintiff arises out of those activities (Jerry Wilkerson v. RSL Funding, L.L.C., 76 S.W.3d 496, 507)."
-      },
-      "cloud": {
-        "engine_mode": "cloud",
-        "ms": 78343,
-        "sentences": 15,
-        "verified": 12,
-        "unverified": 3,
-        "law_sentences": 3,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 0.75,
-        "element_checklist_size": 3,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "researcher",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "analyst",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "adversary",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          }
-        ],
-        "draft_text": "[RECORD] Texas buyer sues a small Oregon manufacturer in Texas state court for product liability and personal injury due to an allegedly defective component.\n[RECORD] The manufacturer sells specialty bicycle components exclusively through its website and maintains no offices or employees in Texas.\n[RECORD] Over a two-year period, the manufacturer shipped 200 orders to Texas customers, earned $40,000 from Texas sales, and ran targeted Instagram ads directed at Texas cyclists.\n[LAW] A seller’s awareness that the stream of commerce may or will sweep the product into the forum State does not convert the mere act of placing the product into the stream into an act purposefully directed toward the forum State (Spir Star AG v. Kimich, 310 S.W.3d 868, 873).\n[LAW] Examples of conduct indicating purposeful direction include designing the product for the market in the forum State, advertising in the forum State, or establishing channels for providing regular advice to customers in the forum State (Leja v. Schmidt Manufacturing, Inc., 743 F. Supp. 2d 387, 394).\n[INFERRED] Although the manufacturer ran targeted Instagram ads toward Texas cyclists, it remains uncertain whether the specific component that injured the buyer was acquired through those advertisements or via another distribution channel.\n[INFERRED] Without establishing that the defendant engaged in additional conduct purposefully directed at Texas beyond passive online sales and general internet advertising, the minimum contacts threshold under the stream-of-commerce plus framework is not met.\n[INFERRED] Therefore, the manufacturer's motion to dismiss for lack of personal jurisdiction should be granted unless the plaintiff can establish a tighter nexus between the targeted advertising and the purchase of the defective component.\n[INFERRED] Whether a small Oregon specialty bicycle component manufacturer, having no physical presence in Texas but selling products through an interactive website and running targeted Instagram advertisements that reach Texas consumers, is subject to specific personal jurisdiction in a Texas court for a product liability suit arising from an allegedly defective component.\n[INFERRED] A seller's awareness that the stream of commerce may or will sweep a product into the forum State does not convert the mere act of placing the product into the stream into an act purposefully directed toward the forum State (Spir Star AG v. Kimich, 310 S.W.3d 868, 873).\n[INFERRED] Here, the small Oregon manufacturer sells specialty bicycle components exclusively through its website, has no offices or employees in Texas, shipped 200 orders to Texas customers earning $40,000, and ran targeted Instagram ads to Texas cyclists. However, merely placing products into the stream of commerce or maintaining a passive or interactive website, without additional conduct purposefully directed at the forum state such as designing the product for the Texas market or establishing special sales channels, may be insufficient to establish minimum contacts under the stream-of-commerce plus doctrine.\n[INFERRED] Because the mere awareness that products may enter Texas through an interactive website or general web sales does not automatically satisfy purposeful availment without purposeful direction toward the forum state, the manufacturer's motion to dismiss for lack of personal jurisdiction is likely to be granted absent proof of specific forum-directed conduct.\n[INFERRED] The opposing party would argue that running targeted digital advertisements and systematically shipping multiple orders over time into the forum state constitutes purposeful availment under the stream-of-commerce plus doctrine, satisfying minimum contacts.\n[LAW] The placement of a product into the stream of commerce, without more, is not an act of the defendant purposefully directed toward the forum state (480 U.S. 102, 112).\n[INFERRED] The opposing party would argue that running targeted digital advertisements and systematically shipping multiple orders over time into the forum state constitutes purposeful availment under the stream-of-commerce plus doctrine, satisfying minimum contacts."
-      }
-    },
-    {
-      "id": "g3-05-regulatory-taking",
-      "label": "Regulatory taking, just compensation",
-      "local": {
-        "engine_mode": "local",
-        "ms": 522205,
-        "sentences": 15,
-        "verified": 13,
-        "unverified": 2,
-        "law_sentences": 6,
-        "law_with_resolving_pin": 4,
-        "citation_resolution_rate": 1,
-        "element_checklist_size": 3,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "researcher",
-            "engine": "local",
-            "model": "local:qwen3.5:9b"
-          },
-          {
-            "stage": "analyst",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          },
-          {
-            "stage": "adversary",
-            "engine": "local",
-            "model": "local:qwen3:14b"
-          }
-        ],
-        "draft_text": "[RECORD] Family owns beachfront lots purchased for $500,000 as an investment.\n[RECORD] A new state coastal regulation bars any permanent habitable structure on the lots to prevent erosion.\n[RECORD] Appraisals indicate the lots have no economically viable use with a resale value of approximately $5,000 as unbuildable.\n[LAW] A regulatory taking occurs when a government regulation denies landowners all economically viable use of their property or unreasonably interferes with their rights to use and enjoy their property.\n[LAW] The family's beachfront lots have been rendered economically unviable due to the regulation, as appraisals indicate a resale value of only $5,000, compared to the original purchase price of $500,000.\n[INFERRED] The state's regulation likely constitutes a regulatory taking, entitling the family to just compensation under the Fifth Amendment.\n[INFERRED] Whether the state's coastal regulation that bars any permanent habitable structure on the family's beachfront lots constitutes a regulatory taking requiring just compensation under the Fifth Amendment.\n[INFERRED] A regulatory taking occurs when a government regulation denies landowners all economically viable use of their property or unreasonably interferes with their rights to use and enjoy their property. This is established in Lucas v. South Carolina Coastal Council, 505 U.S. 1003, 1015-19 (1992).\n[INFERRED] The family's beachfront lots have been rendered economically unviable due to the regulation, as appraisals indicate a resale value of only $5,000, compared to the original purchase price of $500,000. This aligns with the Lucas test for a regulatory taking, where the regulation effectively denies all economically viable use of the property.\n[INFERRED] The state's regulation likely constitutes a regulatory taking, entitling the family to just compensation under the Fifth Amendment.\n[LAW] The state's regulation does not necessarily constitute a regulatory taking requiring just compensation unless it completely eliminates all economically viable use of the property (Tahoe-Sierra Preservation Council, Inc. v. Tahoe Regional Planning Agency, 535 U.S. 302 (2002), 322).\n[LAW] The Supreme Court has held that a regulation must deny a landowner all economically viable use to trigger the takings clause, and the mere reduction in value or economic utility does not automatically satisfy this standard (Tahoe-Sierra Preservation Council, Inc. v. Tahoe Regional Planning Agency, 535 U.S. 302 (2002), 322).\n[LAW] In Palazzolo v. Rhode Island, 533 U.S. 606 (2001), the Court clarified that the Lucas test requires a complete denial of all economically beneficial use, not merely a substantial diminution in value (Palazzolo v. Rhode Island, 533 U.S. 606 (2001), 623).\n[LAW] Thus, the family's claim may not meet the threshold for a regulatory taking under the Fifth Amendment (Tahoe-Sierra Preservation Council, Inc. v. Tahoe Regional Planning Agency, 535 U.S. 302 (2002), 322).\n[INFERRED] The state's regulation does not necessarily constitute a regulatory taking requiring just compensation unless it completely eliminates all economically viable use of the property. The Supreme Court has held that a regulation must deny a landowner all economically viable use to trigger the takings clause, and the mere reduction in value or economic utility does not automatically satisfy this standard. For example, in Tahoe-Sierra Preservation Council, Inc. v. Tahoe Regional Planning Agency, 535 U.S. 302 (2002), the Court emphasized that temporary regulatory restrictions, even if they significantly reduce property value, do not amount to a taking unless they deprive the owner of all economically viable use. Similarly, in Palazzolo v. Rhode Island, 533 U.S. 606 (2001), the Court clarified that the Lucas test requires a complete denial of all economically beneficial use, not merely a substantial diminution in value. Thus, the family's claim may not meet the threshold for a regulatory taking under the Fifth Amendment."
-      },
-      "cloud": {
-        "engine_mode": "cloud",
-        "ms": 32669,
-        "sentences": 13,
-        "verified": 11,
-        "unverified": 2,
-        "law_sentences": 2,
-        "law_with_resolving_pin": 0,
-        "citation_resolution_rate": 1,
-        "element_checklist_size": 4,
-        "adversary_counter_authority": 5,
-        "overall": "fail",
-        "engines": [
-          {
-            "stage": "intake",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "researcher",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "analyst",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          },
-          {
-            "stage": "adversary",
-            "engine": "cloud",
-            "model": "cloud:gemini-flash-lite-latest"
-          }
-        ],
-        "draft_text": "[RECORD] A family owns beachfront lots purchased for $500,000 as an investment.\n[RECORD] A new state coastal regulation bars any permanent habitable structure on the lots to prevent erosion.\n[RECORD] Appraisals indicate the lots have no economically viable use, with a resale value of approximately $5,000 as unbuildable.\n[LAW] A second categorical rule applies to regulations that completely deprive an owner of all economically beneficial use of her property (505 U. S. 1003, 1019).\n[LAW] The government must pay just compensation for such total regulatory takings, except to the extent that background principles of nuisance and property law independently restrict the owner's intended use (505 U. S. 1003, 1026-1032).\n[INFERRED] Because the state coastal regulation prohibits all permanent habitable structures and reduces the value of the lots to a mere $5,000, it constitutes a total regulatory taking under the framework of Lucas v. South Carolina Coastal Council.\n[INFERRED] The family has a valid claim for just compensation unless the state can establish a defense under background principles of nuisance law.\n[INFERRED] Whether a state coastal regulation that completely deprives beachfront property of all economically beneficial or productive use constitutes a categorical regulatory taking requiring just compensation under the Fifth Amendment.\n[INFERRED] A regulation that completely deprives an owner of all economically beneficial or productive use of property effects a total regulatory taking for which the government must pay just compensation, unless the restriction is independently justified by background principles of nuisance and property law (505 U. S. 1003, 1019).\n[INFERRED] Here, the family owns beachfront lots purchased as an investment, and a new state coastal regulation completely bars any permanent habitable structure on the lots to prevent erosion. Appraisals confirm that the regulation has stripped the property of all economically viable use, leaving a nominal resale value of approximately $5,000 compared to the $500,000 purchase price. Because this action denies the owners all economically beneficial use of the land, it mirrors the total regulatory taking recognized in Lucas v. South Carolina Coastal Council.\n[INFERRED] The state's coastal regulation constitutes a categorical regulatory taking, and the family is entitled to seek just compensation.\n[INFERRED] The State will argue that the coastal regulation does not effect a categorical taking because the restriction is a temporary or partial measure aimed at preventing coastal erosion under its legitimate police powers, requiring the claim to be evaluated under the ad hoc balancing test of Penn Central rather than as a per se taking."
+        "draft_text": "[RECORD] A 67-year-old Black man checked into a motel in Atlanta.\n[RECORD] The motel manager called police and reported him as a 'suspicious person' after seeing him in the lobby.\n[RECORD] Officers arrived, asked him to leave, and when he refused, arrested him for trespass.\n[RECORD] He was held for 9 hours and released without charges.\n[LAW] Specifically, a plaintiff must show that the conduct allegedly causing the deprivation of a federal right was fairly attributable to the State (457 U.S. 922, 937).\n[LAW] Probable cause is an absolute bar to a claim of false arrest asserted under the Fourth Amendment and section 1983 (946 F.3d 342, 353).\n[INFERRED] The plaintiff must establish that the private motel manager's actions were sufficiently connected to the police response to constitute state action under § 1983.\n[INFERRED] If the officers had probable cause to arrest the plaintiff for trespass after he refused to leave the premises, the § 1983 false arrest claim may be barred.\n[INFERRED] Whether a private motel and its manager can be held liable under 42 U.S.C. § 1983 for a guest's arrest, and whether the officers' subsequent arrest constitutes false arrest when the guest refused to leave.\n[INFERRED] To state a claim under 42 U.S.C. § 1983, a plaintiff must show that the conduct causing the deprivation of a federal right was fairly attributable to the State (457 U.S. 922, 937). Furthermore, the existence of probable cause or the lawful request to leave a premises can serve as a defense or bar to false arrest claims under § 1983 (946 F.3d 342, 353).\n[INFERRED] Here, the plaintiff is a 67-year-old Black man who checked into a motel in Atlanta and was reported as a 'suspicious person' by the manager, leading police to ask him to leave and subsequently arresting him for trespass when he refused. While the plaintiff suffered a deprivation of liberty by being held for 9 hours and released without charges, establishing liability against the private motel under § 1983 requires satisfying the state action requirement, such as joint action or state compulsion. Additionally, because the officers asked him to leave and he refused, the resulting trespass arrest implicates potential probable cause defenses that bar false arrest claims under § 1983.\n[INFERRED] The § 1983 claim against the motel faces significant hurdles regarding the state action requirement and potential probable cause defenses for the arrest, requiring further factual development regarding police involvement and the manager's instigation.\n[INFERRED] The opposing party would argue that the § 1983 claim fails as a matter of law because a private motel and its manager are not state actors, and merely summoning police or reporting a suspected trespass does not convert private conduct into state action under the Fourteenth Amendment.\n[LAW] Conspiracy or joint action in § 1983 actions is required to draw in private parties who would otherwise not be susceptible to a § 1983 action because of the state action doctrine (398 U.S. 144, 152).\n[INFERRED] Furthermore, even if state action could be established, the officers' independent decision to arrest the plaintiff after he refused a lawful request to leave the premises establishes probable cause, which serves as an absolute bar to any false arrest or wrongful detention claim under § 1983.\n[INFERRED] The opposing party would argue that the § 1983 claim fails as a matter of law because a private motel and its manager are not state actors, and merely summoning police or reporting a suspected trespass does not convert private conduct into state action under the Fourteenth Amendment (398 U.S. 144, 152). Furthermore, even if state action could be established, the officers' independent decision to arrest the plaintiff after he refused a lawful request to leave the premises establishes probable cause, which serves as an absolute bar to any false arrest or wrongful detention claim under § 1983."
       }
     }
   ]

@@ -27,6 +27,7 @@ Treatment bits: 1 overrul*-family (overrul*, disapprov*, supersed*,
 """
 
 import argparse
+import csv
 import json
 import re
 import sys
@@ -57,6 +58,62 @@ BIT = {
     # overruling-family extensions fold into the overruled bit (bit 1):
     "disapp": 1, "sup": 1, "dep": 1, "nlg": 1,
 }
+
+# ---- proven scanner (treatment_proven) -------------------------------------
+# The aggregate flag above unions ALL citing contexts of an opinion and is
+# annotation-only. The PROVEN scanner (proven_stage) is the strike-grade
+# signal: sentence-scoped, negation-vetoed, quote-excluded, date-guarded.
+# Measured F1 audit (2026-09-24, live corpus):
+#   - negation: Roe 26/260, Miranda 169/1756 overrul*-mention contexts are
+#     negated (~10%) — "never been overruled" must never flag overruled;
+#   - date bleed: 13% of overruled-flagged opinions carry citing dates
+#     BEFORE the cited decision — the ±150-char context window straddles
+#     sentence boundaries, so only the citation's own sentence counts.
+PROVEN_MIN_DATE_COVERAGE = 0.90
+
+# Opinion types whose text can PROVE treatment (the writer filter): the
+# majority/combined opinion is the court's act. Headnotes, dissents,
+# concurrences never strike another case.
+PROVEN_MAJORITY_TYPES = {"010combined"}
+
+NEGATION_RE = re.compile(
+    r"(?:\b(?:not|never|no|nor|neither|without|hardly|scarcely)\b|n't)"
+    r"[^.;]{0,60}?"
+    r"(?:overrul\w*|abrogat\w*|disapprov\w*|supersed\w*|depart\w*\s+from"
+    r"|no\s+longer\s+(?:good\s+law|controlling|followed|valid))"
+    r"|(?:overrul\w*|abrogat\w*|disapprov\w*|supersed\w*)"
+    r"[^.;]{0,40}?"
+    r"\b(?:not|never|no|nor|neither)\b",
+    re.I,
+)
+
+
+def _inside_quotation(sent: str) -> bool:
+    """True when the FIRST treatment match sits inside a quotation:
+    a matching quote pair around it ("... which was overruled in ...") is
+    evidence about the quoted words, not the citer's holding. An unpaired
+    quote char (nested markup, apostrophe handling) stays eligible."""
+    m = TREATMENT_RE.search(sent)
+    qpos = [q.start() for q in re.finditer(r'[\u201c"]', sent)]
+    return len(qpos) >= 2 and qpos[0] < m.start() < qpos[-1]
+
+
+def _proven_flags_from_context(ctx: str) -> int:
+    """Strict per-edge treatment: sentence-scoped, negation-vetoed,
+    quote-excluded. Returns a bitfield over BIT."""
+    if not ctx:
+        return 0
+    b = 0
+    for sent in re.split(r"(?<=[.!?])\s+", ctx):
+        if not TREATMENT_RE.search(sent):
+            continue
+        if NEGATION_RE.search(sent):
+            continue
+        if _inside_quotation(sent):
+            continue
+        for m in TREATMENT_RE.finditer(sent):
+            b |= BIT[m.lastgroup]
+    return b
 
 
 def load_opinions(conn):
@@ -344,6 +401,145 @@ def write_stage(conn, outdir=AUTH_DIR):
 
 # ---------------------------------------------------------------- reflag
 
+# ---------------------------------------------------------------- proven
+
+def proven_stage(conn, outdir=AUTH_DIR, out_csv=None):
+    """STRICT good-law pass over citing edges -> treatment_proven table.
+
+    Per edge (citing --context--> cited): sentence-scoped TREATMENT_RE match,
+    NEGATION_RE veto, in-quote exclusion. Aggregate to the CITED opinion
+    only when some qualifying citing opinion (a) post-dates the cited
+    decision and (b) is a majority/combined opinion text. The date gate is
+    checked first corpus-wide: under PROVEN_MIN_DATE_COVERAGE reliable dates
+    the stage refuses (fail loud) rather than build strikes on date junk
+    (measured F1 audit: 13% date-bleed in the loose aggregate).
+
+    Writes treatment_proven(opinion_id PK, proven_flags) — the ONLY signal
+    the verifier may strike on (CLAUDE.md §5.5: only provable claims gate
+    the draft; authority.treatment_flags stays annotation-only).
+
+    The writer filter folds into the scan (one memoized PK lookup per
+    qualifying citing opinion): the first version ran correlated subqueries
+    per candidate in the write phase — measured 30ms+/candidate on the live
+    corpus, i.e. hours. The checkpoint carries the aggregate, so a kill
+    mid-scan resumes without losing state (the first version stored only
+    the rowid and a restart silently rebuilt an empty table).
+    """
+    outdir = Path(outdir)
+    ckpt = outdir / "proven.progress.json"
+    state = {"last_rowid": 0, "flags": {}}
+    if ckpt.exists():
+        state = json.loads(ckpt.read_text())
+        print(f"[proven] resuming at rowid>{state['last_rowid']:,} "
+              f"({len(state['flags']):,} candidates carried)")
+
+    # Date reliability gate: sample citing edges deterministically
+    # (every 7th rowid, plus the first 1000 so small tables sample fully),
+    # and measure the share whose dates are even parseable; under the
+    # floor, refuse.
+    probe = conn.execute(
+        """SELECT ci.date_filed, cd.date_filed FROM cites ct
+           JOIN opinions ci ON ci.id = ct.citing_id
+           JOIN opinions cd ON cd.id = ct.cited_id
+           WHERE ci.date_filed IS NOT NULL AND cd.date_filed IS NOT NULL
+             AND (ct.rowid % 7 = 0 OR ct.rowid <= 1000)
+           LIMIT 50000"""
+    ).fetchall()
+    usable = sum(
+        1 for a, b in probe
+        if len(a) == 10 and len(b) == 10 and a[:4].isdigit() and b[:4].isdigit()
+    )
+    if probe and (usable / len(probe)) < PROVEN_MIN_DATE_COVERAGE:
+        raise SystemExit(
+            f"[proven] date coverage {usable}/{len(probe)} below "
+            f"{PROVEN_MIN_DATE_COVERAGE:.0%} — refusing to build a date-guarded "
+            f"treatment table on unreliable dates (measured, not assumed)"
+        )
+
+    ids, dates = load_opinions(conn)
+    id_index = {int(v): i for i, v in enumerate(ids.tolist())}
+    flags = {int(k): int(v) for k, v in state["flags"].items()}
+    majority_memo: dict[int, bool] = {}
+    tick = progress_logger("proven", every=5_000_000)
+    t0 = time.time()
+    cur = conn.execute(
+        "SELECT rowid, citing_id, cited_id, context FROM cites WHERE rowid > ?",
+        (state["last_rowid"],))
+    scanned_since_ckpt = 0
+    while True:
+        rows = cur.fetchmany(200_000)
+        if not rows:
+            break
+        max_rowid = state["last_rowid"]
+        for rid, citing, cited, ctx in rows:
+            max_rowid = rid
+            b = _proven_flags_from_context(ctx or "")
+            if not b:
+                continue
+            i = id_index.get(citing, -1)
+            j = id_index.get(cited, -1)
+            if i < 0 or j < 0:
+                continue
+            di, dj = int(dates[i]), int(dates[j])
+            if di == 0 or dj == 0 or di < dj:
+                continue  # date guard (unknown dates never prove)
+            mj = majority_memo.get(citing)
+            if mj is None:
+                row = conn.execute(
+                    "SELECT type FROM opinions WHERE id = ?", (citing,)).fetchone()
+                mj = bool(row and row[0] in PROVEN_MAJORITY_TYPES)
+                majority_memo[citing] = mj
+            if not mj:
+                continue  # writer filter: headnotes/dissents never prove
+            flags[cited] = flags.get(cited, 0) | b
+        state["last_rowid"] = max_rowid
+        scanned_since_ckpt += len(rows)
+        if scanned_since_ckpt >= 5_000_000:
+            # Checkpoint WITH the aggregate: resume cannot lose the scan.
+            state["flags"] = {str(k): v for k, v in flags.items()}
+            ckpt.write_text(json.dumps(state))
+            scanned_since_ckpt = 0
+        tick(len(rows))
+
+    print(f"[proven] scanned cites in {(time.time()-t0)/60:.1f} min; "
+          f"{len(flags):,} flagged opinions; writing (bulk)")
+    ckpt.unlink(missing_ok=True)  # scan+aggregate complete — resume state spent
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("DROP TABLE IF EXISTS treatment_proven")
+    conn.execute("""
+        CREATE TABLE treatment_proven (
+            opinion_id INTEGER PRIMARY KEY,
+            proven_flags INTEGER NOT NULL
+        )
+    """)
+    conn.executemany(
+        "INSERT OR REPLACE INTO treatment_proven (opinion_id, proven_flags) VALUES (?, ?)",
+        sorted(flags.items()))
+    conn.execute("CREATE INDEX idx_treatment_proven_flags ON treatment_proven(proven_flags)")
+    conn.commit()
+    if out_csv:
+        with open(out_csv, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["opinion_id", "proven_flags"])
+            for row in conn.execute(
+                    "SELECT opinion_id, proven_flags FROM treatment_proven"):
+                w.writerow(row)
+        print(f"[proven] csv snapshot -> {out_csv}")
+
+    n_flag = conn.execute("SELECT count(*) FROM treatment_proven").fetchone()[0]
+    n_ovr = conn.execute(
+        "SELECT count(*) FROM treatment_proven WHERE proven_flags & 1 = 1").fetchone()[0]
+    summary = {
+        "proven_flagged_total": int(n_flag),
+        "proven_overruled_family": int(n_ovr),
+        "date_coverage_probe": [usable, len(probe)],
+        "minutes": round((time.time() - t0) / 60, 1),
+    }
+    (outdir / "proven.summary.json").write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2))
+
+
 def reflag_stage(conn, outdir=AUTH_DIR):
     """Re-scan cites.context with the CURRENT TREATMENT_RE and update only
     authority.treatment_flags. Used when the scanner improves — avoids
@@ -431,13 +627,14 @@ def reflag_stage(conn, outdir=AUTH_DIR):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("stage", choices=["scan", "pagerank", "write", "reflag"])
+    ap.add_argument("stage", choices=["scan", "pagerank", "write", "reflag", "proven"])
+    ap.add_argument("--csv", default=None, help="proven: also write a CSV snapshot here")
     args = ap.parse_args()
     readonly = args.stage in ("scan", "pagerank")
     conn = db_connect(CORPUS_DB, readonly=readonly)
     try:
         {"scan": scan_stage, "pagerank": pagerank_stage,
-         "write": write_stage, "reflag": reflag_stage}[args.stage](conn)
+         "write": write_stage, "reflag": reflag_stage}[args.stage](conn) if args.stage != "proven" else proven_stage(conn, out_csv=args.csv)
     finally:
         conn.close()
 

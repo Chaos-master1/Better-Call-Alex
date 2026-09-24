@@ -29,6 +29,15 @@ Stages (each idempotent, INSERT OR REPLACE on (source, title, section)):
   ensure               create statutes + statutes_fts
   ecfr-title --title N [--date D] [--part P]
   usc-title  --title N --congress C --law L
+  usc-file   --title N --file PATH   load a previously downloaded title zip
+                                     (used where uscode.house.gov is
+                                     unreachable; the official govinfo
+                                     package of the same OLRC XML parses
+                                     identically)
+  usc-govinfo --title N --file PATH  load a govinfo USCODE-{year}-title{n}
+                                     package zip (html granules) — same
+                                     statutory text, per-section documentid
+                                     keys
   spot-check --n 20 [--date D]   re-fetch n live eCFR sections and compare
   stats
 """
@@ -348,6 +357,123 @@ def load_usc_title(conn: sqlite3.Connection, title: str, congress: str, law: str
     return load_usc_bytes(conn, title, fetch(url))
 
 
+def load_usc_file(conn: sqlite3.Connection, title: str, path: str) -> int:
+    """USC load from a title zip already on disk (network-free stage).
+
+    For networks where uscode.house.gov is unreachable: the official
+    govinfo package (USCODE-{year}-title{n}) ships the same OLRC usc-md
+    XML, and is fetched out of band; this stage validates and parses it
+    through the identical load path so provenance is unchanged."""
+    p = Path(path)
+    if not p.is_file():
+        raise SystemExit(f"no such file: {path}")
+    print(f"[usc] loading archive {p.name} ({p.stat().st_size:,} bytes)", flush=True)
+    name, xdata = zipfile_member_path(p)
+    print(f"[usc] archive member: {name} ({len(xdata):,} bytes)", flush=True)
+    n = insert_rows(conn, parse_usc_sections(xdata), title)
+    rebuild_fts(conn)
+    print(f"[usc] title {title}: {n} sections stored", flush=True)
+    return n
+
+
+def zipfile_member_path(p: Path):
+    """First .xml member of a zip ON DISK, as (name, bytes) — reads only
+    that member rather than the whole archive into memory."""
+    import zipfile as _zf
+    with _zf.ZipFile(p) as zf:
+        names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
+        if not names:
+            raise SystemExit(f"no XML member in archive: {zf.namelist()}")
+        name = names[0]
+        return name, zf.read(name)
+
+
+# --------------------------- govinfo USCODE package (html granules) ----
+
+# The govinfo USCODE package (USCODE-{year}-title{n}) ships one HTML granule
+# per section with GPO field markers, e.g.
+#   <!-- documentid:42_1983 ... currentthrough:20240103 -->
+#   <h3 class="section-head">&sect;1983. Civil action ...</h3>
+#   <p class="statutory-body">Every person who ...</p>
+# The documentid IS the authoritative section key ("42_300gg-1" → "300gg-1"),
+# so synthetic-looking filename suffixes ("-1", "-2") are real statutory ids,
+# never disambiguators. Container granules (the title root, chapters, TOC
+# pages) have no usable section docid and are skipped.
+_DOCID_RE = re.compile(r"documentid:(\S+)")
+_SECTION_KEY_RE = re.compile(r"^[1-9][0-9a-zA-Z-]{0,15}$")
+_H3_RE = re.compile(r'<h3 class="section-head">(.*?)</h3>', re.S)
+_P_RE = re.compile(r'<p class="(statutory-body|source-credit|note-body)">(.*?)</p>', re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def parse_usc_govinfo_granule(data: bytes):
+    """One govinfo HTML granule → a statute row, or None for non-section
+    granules (title root, chapter containers, TOC pages)."""
+    import html as _html
+    html = data.decode("utf-8", "replace")
+    docid_m = _DOCID_RE.search(html)
+    if not docid_m:
+        return None
+    rest = docid_m.group(1)
+    if "_" not in rest:
+        return None
+    _prefix, section = rest.split("_", 1)
+    if not _SECTION_KEY_RE.match(section):
+        return None  # containers like "" or "-ch1"
+    h3 = _H3_RE.search(html)
+    if not h3:
+        return None
+    heading = collapse_ws(_html.unescape(_TAG_RE.sub("", h3.group(1))))
+    # "§1983. Civil action ..." → "Civil action ..." (the num itself is the key)
+    heading = re.sub(r"^\u00a7\s*[0-9A-Za-z][0-9A-Za-z.\-]*\.?\s*", "", heading)
+    parts = [collapse_ws(_html.unescape(_TAG_RE.sub("", body)))
+             for _cls, body in _P_RE.findall(html)]
+    text = " ".join(p for p in parts if p)
+    if not (heading or text):
+        return None
+    return {"source": "usc", "num": section, "heading": heading,
+            "text": text, "effective_date": None}
+
+
+def load_usc_govinfo_file(conn: sqlite3.Connection, title: str, path: str) -> int:
+    """USC load from a govinfo USCODE-{year}-title{n} package zip on disk.
+
+    uscode.house.gov is unreachable from some networks; this official
+    package carries the same statutory text per section granule. Sections
+    stream out of the archive one granule at a time (constant memory),
+    INSERT OR REPLACE keeps the load idempotent, and FTS rebuilds once at
+    the end."""
+    import zipfile as _zf
+    p = Path(path)
+    if not p.is_file():
+        raise SystemExit(f"no such file: {path}")
+    print(f"[usc-govinfo] loading package {p.name} ({p.stat().st_size:,} bytes)",
+          flush=True)
+    n = 0
+    batch: list[tuple] = []
+    with _zf.ZipFile(p) as zf:
+        for member in zf.infolist():
+            if not member.filename.lower().endswith(".htm") or "/html/" not in member.filename:
+                continue
+            row = parse_usc_govinfo_granule(zf.read(member))
+            if row is None:
+                continue
+            batch.append((row["source"], title, row["num"], row["heading"],
+                          row["text"], row["effective_date"]))
+            if len(batch) >= 2_000:
+                conn.executemany(INSERT_OR_REPLACE, batch)
+                conn.commit()
+                n += len(batch)
+                batch = []
+    if batch:
+        conn.executemany(INSERT_OR_REPLACE, batch)
+        conn.commit()
+        n += len(batch)
+    rebuild_fts(conn)
+    print(f"[usc-govinfo] title {title}: {n} sections stored", flush=True)
+    return n
+
+
 def load_usc_bytes(conn: sqlite3.Connection, title: str, zbytes: bytes) -> int:
     """USC load from already-fetched zip bytes (network-free; unit-tested).
     Split from load_usc_title so the archive path is exercisable offline."""
@@ -437,11 +563,12 @@ def stats(conn: sqlite3.Connection) -> dict:
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["ensure", "ecfr-title", "usc-title",
-                                    "spot-check", "stats"])
+                                    "usc-file", "usc-govinfo", "spot-check", "stats"])
     ap.add_argument("--title", help="title number, e.g. 42")
     ap.add_argument("--congress", help="US Code release-point congress, e.g. 119")
     ap.add_argument("--law", help="US Code release-point law, e.g. 73")
     ap.add_argument("--part", help="optional eCFR ?part= filter (e.g. part-1026)")
+    ap.add_argument("--file", help="path to a previously downloaded title zip (usc-file)")
     ap.add_argument("--date", default="2026-08-31", help="eCFR as-of date")
     ap.add_argument("--n", type=int, default=20, help="spot-check sample size")
     args = ap.parse_args()
@@ -464,6 +591,18 @@ def main():
             conn.executescript(STATUTES_SCHEMA)
             conn.commit()
             load_usc_title(conn, args.title, args.congress, args.law)
+        elif args.cmd == "usc-file":
+            if not (args.title and args.file):
+                raise SystemExit("--title and --file are required")
+            conn.executescript(STATUTES_SCHEMA)
+            conn.commit()
+            load_usc_file(conn, args.title, args.file)
+        elif args.cmd == "usc-govinfo":
+            if not (args.title and args.file):
+                raise SystemExit("--title and --file are required")
+            conn.executescript(STATUTES_SCHEMA)
+            conn.commit()
+            load_usc_govinfo_file(conn, args.title, args.file)
         elif args.cmd == "spot-check":
             spot_check(conn, args.n, args.date)
         elif args.cmd == "stats":

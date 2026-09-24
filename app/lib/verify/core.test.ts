@@ -44,7 +44,7 @@ function memoryCorpus(): Database.Database {
   db.exec(
     `INSERT INTO opinions (id, cluster_id, case_name, type, blocked, text)
      VALUES (1, 100, 'Roe v. Wade', 'lead', 0,
-       'the quick brown fox jumps over the lazy dog and then some more words here')`
+       '*113 the quick brown fox jumps over the lazy dog and then *114 some more words here')`
   );
   db.exec(`INSERT INTO opinions_fts (rowid, text) VALUES (1, 'the quick brown fox jumps over the lazy dog and then some more words here')`);
   db.exec(`INSERT INTO citation_strings VALUES (100, '410', 'U.S.', '113', 'full')`);
@@ -318,3 +318,302 @@ test("true-source probe never names a de-indexed (blocked) opinion", () => {
     db.close();
   }
 });
+
+// ——— short-form / Id. chain resolution (Phase B rung 1) ———
+
+function shortCite(
+  text: string,
+  opts: Partial<BridgeCitation> = {}
+): BridgeCitation {
+  return {
+    text,
+    corrected: text,
+    volume: "410",
+    reporter: "U.S.",
+    page: null,
+    type: "short",
+    pin_cite: "200",
+    start: 0,
+    end: text.length,
+    ...opts,
+  };
+}
+
+test("short form with matching verified antecedent resolves (chain semantics)", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const short = shortCite("410 U.S., at 200", { start: 20, end: 36 });
+    const report = analyzeCitationsAndQuotes(db, [full, short], "410 U.S. 113 … 410 U.S., at 200");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+    assert.equal(report.citations[1].case_name, "Roe v. Wade");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form WITHOUT antecedent stays unsupported_form, not resolved", () => {
+  const db = memoryCorpus();
+  try {
+    const short = shortCite("410 U.S., at 200");
+    const report = analyzeCitationsAndQuotes(db, [short], "410 U.S., at 200");
+    assert.equal(report.citations[0].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form after a FAILED full cite stays unsupported_form (broken chain)", () => {
+  const db = memoryCorpus();
+  try {
+    const bad = fullCite("999", 0, 11); // not in the memory corpus
+    const short = shortCite("410 U.S., at 200", { start: 20, end: 36 });
+    const report = analyzeCitationsAndQuotes(db, [bad, short], "410 U.S. 999 … 410 U.S., at 200");
+    assert.equal(report.citations[0].status, "unresolved_citation");
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("short form with MISMATCHED reporter stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const other = shortCite("347 U.S., at 200", {
+      volume: "347",
+      start: 20,
+      end: 36,
+    });
+    const report = analyzeCitationsAndQuotes(db, [full, other], "410 U.S. 113 … 347 U.S., at 200");
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("Id. after a verified full cite resolves to that antecedent", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const id = shortCite("Id. at 205.", {
+      type: "id",
+      volume: null,
+      reporter: null,
+      page: null,
+      start: 20,
+      end: 31,
+    });
+    const report = analyzeCitationsAndQuotes(db, [full, id], "410 U.S. 113 … Id. at 205.");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+  } finally {
+    db.close();
+  }
+});
+
+test("Id. with no antecedent stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const id = shortCite("Id.", {
+      type: "id",
+      volume: null,
+      reporter: null,
+      page: null,
+    });
+    const report = analyzeCitationsAndQuotes(db, [id], "Id.");
+    assert.equal(report.citations[0].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("supra with a name matching a resolved antecedent resolves", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11); // resolves to "Roe v. Wade"
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: "Roe",
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[1].status, "verified");
+    assert.equal(report.citations[1].cluster_id, 100);
+  } finally {
+    db.close();
+  }
+});
+
+test("supra name NOT in the resolved chain stays unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11); // "Roe v. Wade"
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: "Katz",
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("supra with no name metadata falls back to unsupported_form", () => {
+  const db = memoryCorpus();
+  try {
+    const full = fullCite("113", 0, 11);
+    const supra = shortCite("supra, at 164", {
+      type: "supra",
+      volume: null,
+      reporter: null,
+      page: null,
+      name: null,
+      start: 20,
+      end: 33,
+    });
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [full, supra],
+      "410 U.S. 113 … supra, at 164"
+    );
+    assert.equal(report.citations[1].status, "unsupported_form");
+  } finally {
+    db.close();
+  }
+});
+
+test("bare § tokenizer artifacts are skipped, real statutory cites ride untouched", () => {
+  const db = memoryCorpus();
+  try {
+    const sections: BridgeCitation[] = ["§", "§ ", " §"].map((t, i) => ({
+      text: t,
+      corrected: t,
+      volume: null,
+      reporter: null,
+      page: null,
+      type: "unknown",
+      pin_cite: null,
+      start: i * 4,
+      end: i * 4 + t.length,
+    }));
+    const real: BridgeCitation = {
+      text: "42 U.S.C. § 1983",
+      corrected: "42 U.S.C. § 1983",
+      volume: null,
+      reporter: "U.S.C.",
+      page: "1983",
+      type: "unknown",
+      pin_cite: null,
+      start: 40,
+      end: 56,
+    };
+    const report = analyzeCitationsAndQuotes(
+      db,
+      [...sections, real],
+      "§ § § and 42 U.S.C. § 1983 claim"
+    );
+    const reported = report.citations.map((c) => c.citation_text);
+    assert.ok(!reported.includes("§"), "bare § must not appear as a citation");
+    assert.equal(reported.filter((t) => t === "42 U.S.C. § 1983").length, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test("pin inside the opinion's star-page span is pin_in_range", () => {
+  const db = memoryCorpus();
+  try {
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "114",
+      start: 0,
+      end: 12,
+    };
+    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 114");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[0].pin_status, "pin_in_range");
+  } finally {
+    db.close();
+  }
+});
+
+test("pin outside the star-page span is pin_out_of_range", () => {
+  const db = memoryCorpus();
+  try {
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "999",
+      start: 0,
+      end: 12,
+    };    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 999");
+    assert.equal(report.citations[0].status, "verified");
+    assert.equal(report.citations[0].pin_status, "pin_out_of_range");
+  } finally {
+    db.close();
+  }
+});
+
+test("anchors that do not start at the cited first page never strike a pin (trust gate)", () => {
+  // Live-census finding (2026-09-23, g3-04): the corpus text's star anchors
+  // ran 409–428 for a first page of 1868 — parallel/foreign pagination. A
+  // pin strike built on anchors that provably do not belong to the cited
+  // reporter's numbering is a FALSE strike; the gate must refuse.
+  const db = memoryCorpus();
+  try {
+    // Replace the well-formed anchors with mid-book pagination.
+    db.exec(`UPDATE opinions SET text = '*409 unrelated earlier matter *410 more' WHERE id = 1`);
+    db.exec(`UPDATE opinions_fts SET text = 'unrelated earlier matter more' WHERE rowid = 1`);
+    const full: BridgeCitation = {
+      text: "410 U.S. 113",
+      corrected: "410 U.S. 113",
+      volume: "410",
+      reporter: "U.S.",
+      page: "113",
+      type: "full",
+      pin_cite: "425",
+      start: 0,
+      end: 12,
+    };
+    const report = analyzeCitationsAndQuotes(db, [full], "410 U.S. 113, 425");
+    assert.equal(report.citations[0].status, "verified");
+    // NOT pin_out_of_range: the anchors cannot judge this pin, so no
+    // pin_status is attached at all (the sentence must NOT strike).
+    assert.equal(report.citations[0].pin_status, undefined);
+  } finally {
+    db.close();
+  }
+});
+
+

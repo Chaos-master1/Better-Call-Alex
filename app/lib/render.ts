@@ -28,7 +28,7 @@
  */
 import { verifyText, type VerificationReport } from "./verify/verify.js";
 import { verifyTextAsync } from "./verify/verify_async.js";
-import type { AnalyzeOptions } from "./verify/core.js";
+import { TREATMENT_LABELS, type AnalyzeOptions } from "./verify/core.js";
 import type Database from "better-sqlite3";
 
 export type ClaimTag = "RECORD" | "LAW" | "INFERRED";
@@ -52,6 +52,22 @@ export interface VerifiedSentence {
   inferred: boolean;
 }
 
+/** Why the draft failed (or fully passed), at structured granularity.
+ *  The binary `overall` stays for the export gate and history badges; this
+ *  is the honest breakdown a reviewer actually needs: which checks ran,
+ *  how many passed, and exactly which sentences failed and why. */
+export interface DraftVerdict {
+  overall: "pass" | "fail";
+  sentences_total: number;
+  sentences_verified: number;
+  sentences_struck: number;
+  citations_extracted: number;
+  citations_verified: number;
+  quotes_checked: number;
+  quotes_verified: number;
+  failures: Array<{ index: number; tag: ClaimTag; reason: string }>;
+}
+
 export interface RenderedDraft {
   /** Plain-text draft, the same string passed to the verifier. */
   draft: string;
@@ -61,6 +77,8 @@ export interface RenderedDraft {
   report: VerificationReport;
   /** Overall: pass iff every sentence verified AND every [LAW] sentence has a pin cite. */
   overall: "pass" | "fail";
+  /** Structured breakdown of the verdict (see DraftVerdict). */
+  verdict: DraftVerdict;
 }
 
 /** §5.3 gate: every sentence MUST carry a known tag. Unknown or missing =
@@ -151,6 +169,29 @@ function crossReference(
     let verified = true;
     for (const c of cits) {
       detail.push(`cite '${c.citation_text}' → ${c.status}`);
+      // F1 good-law: PROVEN negative treatment strikes the sentence —
+      // fail-closed (§5.5): citing overruled authority is exactly the
+      // defect the verifier exists to catch. The provenance anchor rides
+      // in the detail so the user can check the strike (treatment_proven
+      // carries a real evidence edge). Lesser signals (questioned family:
+      // distinguished/but-see/declined) surface as honest warnings, never
+      // strikes — the loose aggregate (inferred_treatment) stays
+      // annotation-only everywhere else.
+      if (c.proven_treatment != null && c.proven_treatment & 1) {
+        detail.push(`cite '${c.citation_text}' → PROVEN OVERRULED — later controlling authority overruled/abrogated this case (fail-closed)`);
+        verified = false;
+      } else if (c.proven_treatment != null && (c.proven_treatment & 0b11110)) {
+        const labels = TREATMENT_LABELS.filter((t) => c.proven_treatment! & t.bit).map((t) => t.label);
+        detail.push(`cite '${c.citation_text}' → treated ${labels.join(", ")} by later authority — check before relying`);
+      }
+      // Rung 3 surfacing: a pin whose page falls outside the cited
+      // opinion's star-page span is a real defect the user must see.
+      // Annotation here; the strike happens below.
+      if (c.pin_status === "pin_out_of_range") {
+        detail.push(
+          `cite '${c.citation_text}' → pin ${c.cite_pin_raw ?? ""} is OUTSIDE the cited opinion's star-page span — check the pin`
+        );
+      }
       if (c.status !== "verified") verified = false;
       // probe04 (audit 2026-09-20): 7.2% of (vol, rep, page) groups map to
       // >1 cluster. The cite still verifies; the AMBIGUITY is surfaced so
@@ -173,24 +214,77 @@ function crossReference(
       }
       if (q.status !== "verified") verified = false;
     }
-    // [LAW] without a pin cite cannot be verified. §5.3 + §5.1.
-    if (s.tag === "LAW" && !s.pin_cite) {
-      detail.push("LAW sentence without pin cite → unverified");
+    // A pin outside the cited opinion's star-page span is a material
+    // mis-reference: the sentence claims law at a page the authority does
+    // not contain. Surfaced in detail above; here it strikes.
+    if (cits.some((c) => c.pin_status === "pin_out_of_range")) {
       verified = false;
     }
-    // [LAW] with a pin cite the extractor saw nothing in: the pin field
-    // claims authority the verifier never checked (e.g. a bare "(26065)"),
-    // which would otherwise pass vacuously. The pin must correspond to an
-    // extracted citation in this sentence's range. §5.1.
-    if (s.tag === "LAW" && s.pin_cite && cits.length === 0) {
-      detail.push(`pin cite '${s.pin_cite}' produced no extractable citation → unverified`);
+    // Paraphrase honesty (Phase E): a [LAW] sentence can cite a real case
+    // and still misstate its holding — the gate checks cite resolution and
+    // quotes, not whether the proposition matches the source. A LAW
+    // sentence that passed on citations alone (no quote was extracted and
+    // checked) says so. Surfaced like AMBIGUITY, not struck: the citations
+    // ARE verified; the caveat tells the user exactly what was not.
+    if (s.tag === "LAW" && cits.length > 0 && quotes.length === 0 && verified) {
+      detail.push("paraphrase — holding not quote-checked");
+    }
+    // F2 support evidence (Phase F): the corpus passage behind the verified
+    // citations, so the user sees the text a check would open. Advisory —
+    // a pin whose window shares almost none of the sentence's content words
+    // is surfaced honestly (unjudgeable windows stay silent).
+    const sentSupports = (report.supports ?? []).filter((sp) =>
+      cits.some((c) => c.citation_text === sp.citation && c.status === "verified")
+    );
+    for (const sp of sentSupports) {
+      if (sp.pin_unsupported) {
+        detail.push(
+          `support: pin '${sp.pin}' — window text shares little with the sentence — verify the proposition yourself`
+        );
+      } else {
+        detail.push(
+          `support: ${sp.passage.replace(/\s+/g, " ").slice(0, 160)}${sp.passage.length > 160 ? "…" : ""}`
+        );
+      }
+    }
+    // [LAW] must carry CHECKED authority. §5.3 + §5.1. The pin may arrive
+    // via the dedicated field (local JSON tier) or inline as a parenthetical
+    // the extractor saw (cloud prose tier, e.g. "(392 U.S. 1, 27)"); what
+    // matters is that a citation was extracted from THIS sentence and
+    // resolved. A LAW sentence with none — bare field or bare prose — claims
+    // authority that was never checked. (The earlier "no pin field →
+    // unverified" rule failed real cloud drafts whose inline cites verified
+    // at 100% resolution; struck 2026-09-22 on the live A/B evidence.)
+    if (s.tag === "LAW" && cits.length === 0) {
+      detail.push(
+        s.pin_cite
+          ? `pin cite '${s.pin_cite}' produced no extractable citation → unverified`
+          : "LAW sentence with no extractable citation → unverified"
+      );
       verified = false;
+    }
+    // Provenance backfill (g3 live run 2026-09-23): the model verified an
+    // inline cite but dropped the structured pin_cite field. The checked
+    // extraction IS the provenance — copy it into the field so UI/DOCX pin
+    // columns and the harness's field rule see the truth. Sourced ONLY from
+    // a uniquely resolved citation, never from the model or a guess.
+    let pinCite = s.pin_cite;
+    if (
+      s.tag === "LAW" &&
+      !pinCite &&
+      cits.some((c) => c.status === "verified")
+    ) {
+      const src = cits.find((c) => c.status === "verified" && c.form === "full") ??
+        cits.find((c) => c.status === "verified")!;
+      pinCite = src.cite_pin_raw
+        ? `${src.citation_text}, ${src.cite_pin_raw}`
+        : src.citation_text;
     }
     return {
       index: i,
       tag: s.tag,
       text: s.text,
-      pin_cite: s.pin_cite,
+      pin_cite: pinCite,
       verified,
       detail,
       inferred: s.tag === "INFERRED",
@@ -200,7 +294,20 @@ function crossReference(
     report.overall === "pass" && bySentence.every((s) => s.verified)
       ? "pass"
       : "fail";
-  return { draft, sentences: bySentence, report, overall };
+  const verdict: DraftVerdict = {
+    overall,
+    sentences_total: bySentence.length,
+    sentences_verified: bySentence.filter((s) => s.verified).length,
+    sentences_struck: bySentence.filter((s) => !s.verified).length,
+    citations_extracted: report.citations.length,
+    citations_verified: report.citations.filter((c) => c.status === "verified").length,
+    quotes_checked: report.quotes.length,
+    quotes_verified: report.quotes.filter((q) => q.status === "verified").length,
+    failures: bySentence
+      .filter((s) => !s.verified)
+      .map((s) => ({ index: s.index, tag: s.tag, reason: s.detail.join(" · ") })),
+  };
+  return { draft, sentences: bySentence, report, overall, verdict };
 }
 
 /**

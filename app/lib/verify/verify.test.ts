@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { findQuote } from "./quotes.js";
+import { findQuote, resetQuoteCaches } from "./quotes.js";
 import { openCorpus, resolveCluster } from "../db.js";
 import { extractQuotedSpans, probeFragment } from "./verify.js";
 
@@ -19,6 +19,8 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const HAS_DB = existsSync(path.join(REPO, "data", "corpus.sqlite"));
 
 // ---------------------------------------------------------------- matcher
+
+test.beforeEach?.(resetQuoteCaches);
 
 test("exact substring matches", () => {
   const r = findQuote("before the quick brown fox jumps after", "the quick brown fox");

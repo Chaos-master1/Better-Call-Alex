@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-09-23T20:51:00.922Z",
+  "offline": false,
+  "patterns": 6,
+  "results": [
+    {
+      "id": "g3-01-motel-1983",
+      "status": "pass",
+      "ms": 483551,
+      "overall": "fail",
+      "verified": 9,
+      "total": 17,
+      "adversary_hits": 5,
+      "research_hits": 24,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": [
+        "s6[LAW] cite '251 F.3d 612' → pin 615 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s9[INFERRED] cite '42 U.S.C. § 1983' → statute_not_loaded",
+        "s9[INFERRED] quote 'suspicious person…' → quote_not_found",
+        "s10[INFERRED] cite '42 U.S.C. § 1983' → statute_not_loaded",
+        "s11[INFERRED] quote 'suspicious person.…' → quote_not_found",
+        "s12[INFERRED] cite '42 U.S.C. § 1983' → statute_not_loaded",
+        "s13[LAW] cite '258 F.3d 362' → unresolved_citation",
+        "s14[LAW] cite '578 F.3d 298' → unresolved_citation",
+        "s16[INFERRED] cite '258 F.3d 362' → unresolved_citation",
+        "s16[INFERRED] cite '578 F.3d 298' → unresolved_citation",
+        "s16[INFERRED] quote 'suspicious person…' → quote_not_found"
+      ]
+    },
+    {
+      "id": "g3-02-terry-stop",
+      "status": "pass",
+      "ms": 534047,
+      "overall": "fail",
+      "verified": 15,
+      "total": 23,
+      "adversary_hits": 5,
+      "research_hits": 17,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": [
+        "s8[LAW] LAW sentence with no extractable citation → unverified",
+        "s9[LAW] LAW sentence with no extractable citation → unverified",
+        "s10[LAW] LAW sentence with no extractable citation → unverified",
+        "s18[LAW] cite '579 U.S. _' → unresolved_citation",
+        "s19[LAW] cite '120 S. Ct. 673' → pin 675 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s20[LAW] cite '579 U.S. _' → unresolved_citation",
+        "s21[LAW] cite '109 S. Ct. 1581' → pin 1586 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s22[INFERRED] cite '579 U.S. _' → unresolved_citation"
+      ]
+    },
+    {
+      "id": "g3-03-tarasoff",
+      "status": "skipped-only",
+      "ms": 0
+    },
+    {
+      "id": "g3-04-personal-jurisdiction",
+      "status": "pass",
+      "ms": 2379322,
+      "overall": "fail",
+      "verified": 17,
+      "total": 21,
+      "adversary_hits": 5,
+      "research_hits": 9,
+      "model": "local:qwen3.5:9b",
+      "issues": [],
+      "unverified_citations": [
+        "s9[LAW] cite '104 S.Ct. 1868' → pin 1871-72 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s16[INFERRED] cite '104 S.Ct. 1868' → pin 1871-72 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s17[INFERRED] cite '45 S.W.3d 658' → pin 660 is OUTSIDE the cited opinion's star-page span — check the pin",
+        "s18[INFERRED] cite '251 S.W.3d 854' → pin 856 is OUTSIDE the cited opinion's star-page span — check the pin"
+      ]
+    },
+    {
+      "id": "g3-05-regulatory-taking",
+      "status": "skipped-only",
+      "ms": 0
+    },
+    {
+      "id": "g3-06-chain-cites",
+      "status": "skipped-only",
+      "ms": 0
+    }
+  ],
+  "gate": {
+    "verified_rate": 0.6721311475409836,
+    "baseline_rate": 0.6859504132231405,
+    "tolerance": 0.05,
+    "regression": false
+  },
+  "overall": "pass"
+}

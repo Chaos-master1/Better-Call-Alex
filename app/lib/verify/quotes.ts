@@ -56,10 +56,35 @@ const CURLY_MAP: Record<string, string> = {
   "\u00a0": " ",
 };
 
-function normalizeWithMap(s: string): Normed {
+// Opinion texts are re-normalized on every findQuote call against the same
+// source (verbatim repeats, sibling scans, true-source probes) — the
+// dominant cost of a large verification. normalizeWithMap is a pure
+// function of its input, so results are cached. Bounded FIFO (Map keeps
+// insertion order; first key evicted): worst case ~12 opinion texts of
+// norm+index ≈ tens of MB, released as new texts rotate in.
+const NORM_CACHE_MAX = 12;
+/** Total source chars held across cached entries — a multi-megabyte
+ *  opinion (norm + index map) must not evict everything else, and enough
+ *  of them must not balloon process memory. */
+const NORM_CACHE_CHAR_BUDGET = 6_000_000;
+const normCache = new Map<string, Normed>();
+
+/** Chars processed between scheduling points. Bounds the event-loop stall
+ *  of normalizing a multi-megabyte opinion to ~100ms per chunk. */
+const NORM_CHUNK = 1 << 17;
+
+/**
+ * Chunked normalization — a generator so the cooperative drain can give
+ * the event loop a turn mid-normalization of huge corpus texts. The sync
+ * drain (normalizeWithMap) runs it uninterrupted: identical result.
+ */
+export function* normalizeWithMapGen(s: string): Generator<void, Normed, void> {
+  const hit = normCache.get(s);
+  if (hit) return hit;
   const out: string[] = [];
   const map: number[] = [];
   let pendingWs = false;
+  let sinceYield = 0;
   for (let i = 0; i < s.length; i++) {
     let ch = s[i];
     if (ch === "\u00ad") continue;
@@ -75,9 +100,35 @@ function normalizeWithMap(s: string): Normed {
     }
     out.push(ch.toLowerCase());
     map.push(i);
+    if (++sinceYield >= NORM_CHUNK) {
+      sinceYield = 0;
+      yield;
+    }
   }
   map.push(s.length);
-  return { norm: out.join(""), map };
+  const normed: Normed = { norm: out.join(""), map };
+  if (s.length >= 4096 && s.length <= NORM_CACHE_CHAR_BUDGET) {
+    let charSum = 0;
+    for (const k of normCache.keys()) charSum += k.length;
+    while (
+      normCache.size > 0 &&
+      (normCache.size >= NORM_CACHE_MAX || charSum + s.length > NORM_CACHE_CHAR_BUDGET)
+    ) {
+      const oldest = normCache.keys().next().value!;
+      charSum -= oldest.length;
+      normCache.delete(oldest);
+    }
+    normCache.set(s, normed);
+  }
+  return normed;
+}
+
+function normalizeWithMap(s: string): Normed {
+  const gen = normalizeWithMapGen(s);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
 }
 
 /** Expand editorial bracket alterations: "[t]he" -> "the", "[her]" -> "her". */
@@ -121,7 +172,25 @@ function matchIsNegatorShed(text: string, start: number, quote: string): boolean
   return /(?:^| |['"(\[])(?:no|not|never|none|neither|nor|cannot)[.,;:]?$/i.test(before);
 }
 
+/** Test seam: clears the normalization cache (pure-function tests expect
+ *  independence between cases). */
+export function resetQuoteCaches(): void {
+  normCache.clear();
+}
+
+/** Sync drain — byte-identical to the pre-generator ladder (tests, evals). */
 export function findQuote(text: string, quote: string): QuoteResult {
+  const gen = findQuoteGen(text, quote);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+export function* findQuoteGen(
+  text: string,
+  quote: string
+): Generator<void, QuoteResult, void> {
   if (!quote.trim()) return { found: false };
 
   // Rung 1: exact — scan occurrences; the first non-vetoed one wins. If a
@@ -137,8 +206,9 @@ export function findQuote(text: string, quote: string): QuoteResult {
     cursor = raw + 1;
   }
 
-  // Rungs 2-4 share the canonicalized haystack.
-  const hay = normalizeWithMap(text);
+  // Rungs 2-4 share the canonicalized haystack — the chunked generator
+  // yields inside multi-megabyte normalizations.
+  const hay = yield* normalizeWithMapGen(text);
   const q = normalizeWithMap(quote);
 
   // Rung 2: canonicalized.

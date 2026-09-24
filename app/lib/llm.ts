@@ -253,6 +253,13 @@ async function cloudChat(
     messages,
     temperature: opts.temperature ?? 0.0,
     max_completion_tokens: maxTokens,
+    // Measured 2026-09-24: Gemini's OpenAI-compat endpoint STALLS on
+    // non-streaming chat/completions POSTs (≥120 s for a 5-token reply
+    // while GET /models answers in 0.3 s) but streams the same request
+    // in seconds. stream:true is the working protocol; the SSE answer is
+    // accumulated into the same result shape. Gateways that answer JSON
+    // despite stream:true (and llm.test.ts mocks) take the non-SSE parse.
+    stream: true,
   };
   if (useJsonMode) body.response_format = { type: "json_object" };
   if (opts.stop && opts.stop.length > 0) body.stop = opts.stop;
@@ -318,11 +325,37 @@ async function cloudChat(
       fail(`cloud generate failed: ${msg}`);
     }
 
+    // Dual-protocol parse: the content-type decides. `text/event-stream`
+    // accumulates OpenAI-style SSE deltas (the measured-working Gemini
+    // path); anything else is a classic JSON envelope (gateways that
+    // ignore stream:true, and the mocked unit tests).
     let payload: CloudChatResponse;
-    try {
-      payload = (await res.json()) as CloudChatResponse;
-    } catch (e: any) {
-      fail(`cloud generate: non-JSON response: ${scrubSecrets(String(e?.message ?? e), secrets).slice(0, 200)}`);
+    const ctype = res.headers.get("content-type") ?? "";
+    if (/text\/event-stream/i.test(ctype)) {
+      let acc: CloudChatResponse;
+      try {
+        acc = await readSseChat(res);
+      } catch (e: any) {
+        // Mid-stream transport failure is transient like any network blip.
+        if ((e as any)?.sseTransient && attempt < 2) {
+          const backoff = 1500 * (attempt + 1) + Math.random() * 500;
+          console.warn(`[llm] cloud SSE stream failed — retry ${attempt + 1}/3 in ${Math.round(backoff)}ms`);
+          await new Promise((r) => setTimeout(r, backoff));
+          continue;
+        }
+        throw e;
+      }
+      if (acc.error) {
+        const emsg = typeof acc.error === "string" ? acc.error : acc.error.message ?? "unknown";
+        fail(`cloud generate failed: ${scrubSecrets(emsg, secrets).slice(0, 300)}`);
+      }
+      payload = acc;
+    } else {
+      try {
+        payload = (await res.json()) as CloudChatResponse;
+      } catch (e: any) {
+        fail(`cloud generate: non-JSON response: ${scrubSecrets(String(e?.message ?? e), secrets).slice(0, 200)}`);
+      }
     }
     if (payload.error) {
       const emsg =
@@ -357,6 +390,66 @@ async function cloudChat(
   }
   // Unreachable (loop returns or throws every iteration).
   fail("cloud generate: exhausted retries");
+}
+
+/**
+ * Read an OpenAI-style SSE chat stream into the non-streaming envelope
+ * shape (content joined from deltas; finish_reason/usage/id carried when
+ * the provider sends them). A transport failure MID-STREAM surfaces as a
+ * retryable transient error, not silent truncation — a half-received
+ * draft must never parse as success.
+ */
+async function readSseChat(res: Response): Promise<CloudChatResponse> {
+  const reader = res.body?.getReader();
+  if (!reader) fail("cloud generate: streaming response has no body");
+  const decoder = new TextDecoder();
+  let buf = "";
+  let content = "";
+  let finish: string | null = null;
+  let id: string | undefined;
+  let usage: CloudChatResponse["usage"];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") continue;
+        let evt: any;
+        try {
+          evt = JSON.parse(data);
+        } catch {
+          continue; // keep-alive comment or split frame — ignore
+        }
+        if (evt.error) {
+          const em = typeof evt.error === "string" ? evt.error : evt.error.message ?? "unknown";
+          fail(`stream error: ${em}`);
+        }
+        if (typeof evt.id === "string") id = evt.id;
+        if (evt.usage) usage = evt.usage;
+        const ch = evt.choices?.[0];
+        if (!ch) continue;
+        if (ch.finish_reason) finish = ch.finish_reason;
+        const delta = ch.delta?.content;
+        if (typeof delta === "string") content += delta;
+      }
+    }
+  } catch (e: any) {
+    // Mid-stream transport failure: retryable, never a silent truncation.
+    const err = new Error(`SSE stream failed: ${String(e?.message ?? e)}`);
+    (err as any).sseTransient = true;
+    throw err;
+  }
+  return {
+    id,
+    choices: [{ message: { content }, finish_reason: finish }],
+    usage,
+  };
 }
 
 /** Strip a gateway's model-id prefix (Gemini lists "models/gemini-…") so
@@ -523,8 +616,9 @@ export async function generate(
       fail("cloud engine selected but no ALEX_CLOUD_API_KEY is configured (check .env)");
     }
     await verifyCloud(c.cloud);
+    const wirePrompt = cloudTransform ? cloudTransform(stage, prompt) : prompt;
     try {
-      return await cloudChat(c.cloud, prompt, opts, !!opts.jsonMode);
+      return await cloudChat(c.cloud, wirePrompt, opts, !!opts.jsonMode);
     } catch (e: any) {
       const msg = scrubSecrets(String(e?.message ?? e), [c.cloud.apiKey]).slice(0, 300);
       if (fallbackPolicy(opts.fallback) === "local") {
@@ -612,6 +706,29 @@ export function consumeFallbackEvent(): { stage: string; error: string } | null 
   return e;
 }
 
+// ---- stage payload transforms (ADR-004 §2.4) ----------------------------
+// Cloud payloads carry client facts. Two protections are registered per
+// run and applied INSIDE the llm seam — exactly where the routed engine is
+// known — so an agent cannot forget them and local mode is untouched by
+// construction.
+
+let cloudTransform: ((stage: string, prompt: string) => string) | null = null;
+
+/** Register the cloud-payload transform for this run (redaction, caps).
+ *  Registered by runCase before stage 1; cleared in its finally. */
+export function setCloudPayloadTransform(
+  fn: ((stage: string, prompt: string) => string) | null
+): void {
+  cloudTransform = fn;
+}
+
+/** Fallback-visibility hook: agents render prompts uniformly (no engine
+ *  awareness), but the UI must disclose which engine produced each stage.
+ *  The run orchestrator consumes this per stage and records it. */
+export function stageRoutedEngine(stage: string): EngineId {
+  return engineForStage(stage);
+}
+
 /** @internal test hook — resets cached config/verification/engine state. */
 export function __resetEngineStateForTests(): void {
   resolvedConfig = null;
@@ -621,6 +738,7 @@ export function __resetEngineStateForTests(): void {
   activeStage = null;
   runModeOverride = null;
   lastFallbackEvent = null;
+  cloudTransform = null;
 }
 
 /** True when a cloud key is configured (UI can offer the toggle). */

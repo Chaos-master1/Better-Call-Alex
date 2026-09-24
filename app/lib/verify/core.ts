@@ -16,8 +16,8 @@
  *     source) and overall=fail (§5.2);
  *   - short/id/supra forms are annotated `unsupported_form`, not rejected
  *     (v1 limitation);
- *   - pin pages are never verified (the corpus has no star pagination) —
- *     annotated `pin_unverified`;
+ *   - pin pages are checked against star pagination where the corpus
+ *     carries it (`pin_status`: in_range / out_of_range / no_anchors);
  *   - treatment flags are INFERRED signals read from the authority table,
  *     never asserted facts (§5.5);
  *   - [RECORD] sentence ranges passed via `skipQuoteRanges` are the
@@ -28,8 +28,16 @@
  * entries become `unresolved_citation` checks (overall=fail), not filters.
  */
 import type Database from "better-sqlite3";
-import { resolveCluster, type LookupResult } from "../db.js";
-import { findQuote } from "./quotes.js";
+import { supportForCitation, type SupportEvidence } from "./support.js";
+import {
+  resolveCluster,
+  normalizePage,
+  normalizeReporter,
+  normalizeVolume,
+  type LookupResult,
+} from "../db.js";
+import { findQuote, findQuoteGen } from "./quotes.js";
+import { parseStarAnchors, checkPin, type StarAnchor } from "./pins.js";
 import {
   parseStatuteCites,
   resolveStatute,
@@ -56,12 +64,32 @@ export interface CitationCheck {
   /** char offsets of the citation inside the verified draft text */
   cite_start: number;
   cite_end: number;
-  status: "verified" | "unresolved_citation" | "unsupported_form" | "out_of_corpus";
+  status:
+    | "verified"
+    | "unresolved_citation"
+    | "unsupported_form"
+    | "out_of_corpus"
+    /** the statute's code/title is not loaded in this corpus at all — the
+        cite may be perfectly valid, the corpus just cannot judge it */
+    | "statute_not_loaded";
   pin_unverified: boolean;
+  /** Rung 3 (star-page anchors): the pin's page falls INSIDE the cited
+   *  opinion's anchored page span. Present only when the resolved opinion
+   *  text carries star anchors and the cite has a pin; the report still
+   *  always exposes pin_unverified for renderers built on v1. */
+  pin_status?: "pin_in_range" | "pin_out_of_range" | "pin_no_anchors";
+  /** Raw pin string, carried from the bridge for the pin check. */
+  cite_pin_raw?: string | null;
   opinion_id?: number;
   cluster_id?: number;
   case_name?: string | null;
   inferred_treatment?: string[];
+  /** F1 good-law: PROVEN treatment (strike-grade) — strict bitfield from
+   *  treatment_proven (negation-vetoed, date-guarded, writer-filtered).
+   *  Present only when the proven table exists in this corpus and the
+   *  opinion carries proven signal. The verifier STRIKES a sentence whose
+   *  proven signal includes the overruled family (bit 1). */
+  proven_treatment?: number;
   /** set when form === "statute": row id in the statutes table (G4) */
   statute_id?: number;
   /** >1 entry: the cite identifies several clusters (probe04: 7.2% of
@@ -111,6 +139,9 @@ export interface VerificationReport {
   overall: "pass" | "fail";
   citations: CitationCheck[];
   quotes: QuoteCheck[];
+  /** F2 support evidence (Phase F): the corpus passage backing each
+   *  verified citation, pin-window anchored. Advisory — never gates. */
+  supports?: SupportEvidence[];
   summary: Record<string, number>;
 }
 
@@ -123,6 +154,9 @@ export interface BridgeCitation {
   page: string | null;
   type: string;
   pin_cite: string | null;
+  /** Supra/name antecedent (eyecite antecedent_guess): the party name a
+   *  supra reference points at — matched against the draft's own chain. */
+  name?: string | null;
   start: number;
   end: number;
   error?: string;
@@ -153,6 +187,37 @@ export function treatmentLabels(flags: number | null | undefined): string[] {
   if (!flags) return [];
   return TREATMENT_LABELS.filter((t) => flags & t.bit).map((t) => t.label);
 }
+
+/** F1 good-law: PROVEN treatment lookup — strike-grade, per CLAUDE.md §5.5
+ *  (only provable claims gate the draft; the loose aggregate
+ *  authority.treatment_flags stays annotation-only via treatmentLabels).
+ *
+ *  The treatment_proven table is built by `etl/build_authority.py proven`:
+ *  sentence-scoped TREATMENT_RE match, negation veto ("never been
+ *  overruled" never flags), in-quote exclusion, date guard (the citing
+ *  opinion must post-date the cited decision), and a writer filter (the
+ *  citing text must be a majority/combined opinion). Table-optional:
+ *  fixture DBs and pre-F1 corpora simply carry no proven signal (unknown,
+ *  never a strike).
+ *
+ *  Returns the strict bitfield (same bit semantics as TREATMENT_LABELS).
+ */
+export function provenTreatment(db: Database.Database, opinionId: number): number | null {
+  let has = provenTableMemo.get(db);
+  if (has === undefined) {
+    has =
+      db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='treatment_proven'").get() != null;
+    provenTableMemo.set(db, has);
+  }
+  if (!has) return null;
+  const row = db
+    .prepare("SELECT proven_flags FROM treatment_proven WHERE opinion_id = ?")
+    .get(opinionId) as { proven_flags: number } | undefined;
+  return row ? row.proven_flags : null;
+}
+
+// One check per handle: DDL never changes mid-process.
+const provenTableMemo = new WeakMap<Database.Database, boolean>();
 
 // Straight and curly double-quote delimiters. /g is required by matchAll.
 const SPAN_RE = /["\u201c]([^"\u201c\u201d]{8,2000}?)["\u201d]/g;
@@ -235,11 +300,13 @@ export function probeFragment(quote: string, targetWords = 10): string {
   return words.slice(start, start + n).join(" ");
 }
 
-function findTrueSource(
+function* findTrueSource(
   db: Database.Database,
   quote: string,
-  excludeCluster: number | null
-): QuoteCheck["true_source"] {
+  excludeCluster: number | null,
+  quoteMemo: Map<string, ReturnType<typeof findQuote>>,
+  quoteMemoKey: (sourceText: string, quote: string) => string
+): Generator<void, QuoteCheck["true_source"], void> {
   const frag = probeFragment(quote);
   const tokenize = (s: string) =>
     s.toLowerCase().split(/[^a-z0-9']+/).filter((t) => t.length > 2 && t !== "the");
@@ -274,13 +341,28 @@ function findTrueSource(
   for (const expr of exprs) {
     // Wide scan: rejected-quote attribution is rare, and generic prose
     // fragments rank the true source deep in the bm25 order — so cast a
-    // broad net before giving up on identification.
-    const ranked = db
-      .prepare(
-        `SELECT rowid AS id FROM opinions_fts WHERE opinions_fts MATCH ?
-         ORDER BY bm25(opinions_fts) LIMIT 60`
-      )
-      .all(expr) as Array<{ id: number }>;
+    // broad net before giving up on identification. The bm25 phrase scan
+    // is one synchronous statement over a huge index (measured 0.8–2.1s),
+    // so it is its own scheduling unit; the per-database cache means a
+    // repeated scan of the same expression skips it entirely. WeakMap so
+    // a closed corpus (tests build fresh :memory: DBs per case) drops its
+    // entries and results can never leak across databases.
+    yield;
+    let cache = ftsRankedCache.get(db);
+    if (!cache) {
+      cache = new Map();
+      ftsRankedCache.set(db, cache);
+    }
+    let ranked = cache.get(expr);
+    if (!ranked) {
+      ranked = db
+        .prepare(
+          `SELECT rowid AS id FROM opinions_fts WHERE opinions_fts MATCH ?
+           ORDER BY bm25(opinions_fts) LIMIT 60`
+        )
+        .all(expr) as Array<{ id: number }>;
+      cache.set(expr, ranked);
+    }
     for (const { id } of ranked) {
       if (seen.has(id)) continue;
       seen.add(id);
@@ -292,12 +374,18 @@ function findTrueSource(
         | { id: number; cluster_id: number; case_name: string; court_id: string }
         | undefined;
       if (!meta || meta.cluster_id === excludeCluster) continue;
-      const row = db.prepare("SELECT text FROM opinions WHERE id = ?").get(id) as
-        | { text: string }
-        | undefined;
-      if (!row) continue;
+      // The chunked read is exact but may yield internally; the extra
+      // yield keeps one scheduling point per candidate regardless.
+      const text = yield* readOpinionTextGen(db, id);
+      if (text == null) continue;
       checked++;
-      const m = findQuote(row.text, quote);
+      yield;
+      const pKey = quoteMemoKey(text, quote);
+      let m = quoteMemo.get(pKey);
+      if (!m) {
+        m = yield* findQuoteGen(text, quote);
+        quoteMemo.set(pKey, m);
+      }
       if (!m.found) continue;
       // Among opinions containing the span verbatim, prefer SCOTUS and
       // higher-authority sources (duplicate texts and quoters exist).
@@ -337,6 +425,82 @@ function ftsPhraseExpr(terms: string[]): string {
   return terms.map((t) => `"${t.replace(/"/g, "")}"`).join(" ");
 }
 
+/** Per-database cache of expensive pure bm25 ranked scans (see use). */
+const ftsRankedCache = new WeakMap<Database.Database, Map<string, Array<{ id: number }>>>();
+
+/** Bytes of opinion text fetched per scheduling unit. */
+const OPINION_CHUNK = 1 << 20;
+
+/**
+ * Chunked opinion-text read — better-sqlite3 delivers a row in one
+ * synchronous gulp, and a multi-megabyte opinion would stall the event
+ * loop for the whole blob. `substr` windows make each ~1 MiB its own
+ * scheduling unit (the async drain yields between them; the sync drain is
+ * uninterrupted and byte-identical). Returns null when the row is absent.
+ */
+export function* readOpinionTextGen(
+  db: Database.Database,
+  id: number
+): Generator<void, string | null, void> {
+  const lenRow = db
+    .prepare("SELECT length(text) AS len FROM opinions WHERE id = ?")
+    .get(id) as { len: number | null } | undefined;
+  if (!lenRow || lenRow.len == null) return null;
+  const total = lenRow.len;
+  if (total <= OPINION_CHUNK) {
+    const row = db
+      .prepare("SELECT text FROM opinions WHERE id = ?")
+      .get(id) as { text: string } | undefined;
+    return row?.text ?? null;
+  }
+  const stmt = db.prepare(
+    "SELECT substr(text, ?, ?) AS chunk FROM opinions WHERE id = ?"
+  );
+  let out = "";
+  for (let pos = 1; pos <= total; pos += OPINION_CHUNK) {
+    const { chunk } = stmt.get(pos, OPINION_CHUNK, id) as { chunk: string };
+    out += chunk;
+    yield;
+  }
+  return out;
+}
+
+/**
+ * Short-form resolution (Phase B rung 1) — ANTECEDENT-ONLY, by design.
+ *
+ * A short form ("389 U.S., at 351") resolves when the nearest PRECEDING
+ * verified full citation carries the same (volume, reporter): the draft
+ * itself established the referent, so resolution is not a guess.
+ *
+ * Deliberately ABSENT: matching the short form's page against corpus
+ * first-pages. A short form's page is a PIN, not a first page — a pin that
+ * coincides with some other case's first page would silently attach the
+ * WRONG authority, which is worse than an annotation. No fuzzy matching:
+ * a wrong resolution is the only unacceptable outcome.
+ */
+function resolveShortForm(
+  volume: string | null,
+  reporter: string | null,
+  antecedent: CitationCheck | undefined
+): Pick<LookupResult, "cluster_id" | "opinion_id" | "case_name"> | null {
+  if (!volume || !reporter) return null;
+  if (
+    antecedent &&
+    antecedent.status === "verified" &&
+    antecedent.volume != null &&
+    antecedent.reporter != null &&
+    normalizeVolume(antecedent.volume) === normalizeVolume(volume) &&
+    normalizeReporter(antecedent.reporter) === normalizeReporter(reporter)
+  ) {
+    return {
+      cluster_id: antecedent.cluster_id!,
+      opinion_id: antecedent.opinion_id!,
+      case_name: antecedent.case_name ?? null,
+    };
+  }
+  return null;
+}
+
 export interface AnalyzeOptions {
   /** Char ranges (e.g. [RECORD] sentences) whose quoted spans are the
    *  client's own facts, not corpus claims — quote checks are skipped for
@@ -361,12 +525,66 @@ function inSkippedRange(
  * entries — an entry carrying `error` becomes an `unresolved_citation`
  * check so a failed extraction fails the draft instead of vanishing.
  */
-export function analyzeCitationsAndQuotes(
+/** FNV-1a — memo keys only; never security-relevant. */
+function hashString(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+export function* analyzeCitationsAndQuotesGen(
   db: Database.Database,
   extracted: BridgeCitation[],
   text: string,
   opts: AnalyzeOptions = {}
-): VerificationReport {
+): Generator<void, VerificationReport, void> {
+  // Per-analysis memo: identical quote spans (verbatim repeats, a draft
+  // leaning on one authority) must not pay for the same source scan twice.
+  // Scoped to this call so results can never leak across corpora.
+  const quoteMemo = new Map<string, ReturnType<typeof findQuote>>();
+  const quoteMemoKey = (sourceText: string, quote: string) =>
+    `${quote}\u0000${sourceText.length}:${sourceText.length > 512 ? hashString(sourceText) : sourceText}`;
+  const trueSourceMemo = new Map<string, QuoteCheck["true_source"]>();
+  // Per-analysis opinion-text memo (id → text): the quote ladder and the
+  // pin checks both read opinion texts; a draft leaning on one authority
+  // must not re-read (nor re-parse anchors of) a multi-MB opinion.
+  const textMemo = new Map<number, string | null>();
+  const readOpinionMemoized = function* (
+    id: number
+  ): Generator<void, string | null, void> {
+    if (textMemo.has(id)) return textMemo.get(id)!;
+    const text = yield* readOpinionTextGen(db, id);
+    textMemo.set(id, text);
+    return text;
+  };
+  const anchorsMemo = new Map<number, StarAnchor[]>();
+  function* anchorsFor(id: number): Generator<void, StarAnchor[], void> {
+    if (anchorsMemo.has(id)) return anchorsMemo.get(id)!;
+    const text = yield* readOpinionMemoized(id);
+    const anchors = text ? parseStarAnchors(text) : [];
+    anchorsMemo.set(id, anchors);
+    return anchors;
+  }
+  /** Rung 3: attach pin_status to a RESOLVED case citation carrying a pin.
+   *  firstPage = the cited case's reporter first page (the full cite's own
+   *  page, or the antecedent's for short forms) — the pin trust gate in
+   *  pins.ts refuses to strike unless the anchors provably belong to this
+   *  reporter's pagination (first anchor == first page). */
+  function* checkPinFor(
+    citation: CitationCheck,
+    opinionId: number,
+    firstPage: string | null
+  ): Generator<void, void, void> {
+    const anchors = yield* anchorsFor(opinionId);
+    const ps = checkPin(citation.cite_pin_raw ?? null, firstPage, anchors);
+    if (ps === "pin_in_range" || ps === "pin_out_of_range" || ps === "pin_no_anchors") {
+      citation.pin_status = ps;
+    }
+  }
+
   // ---- citations ---------------------------------------------------------
   const citations: CitationCheck[] = [];
   // Statutory cites (G4): eyecite does not carry them, so they are detected
@@ -375,9 +593,52 @@ export function analyzeCitationsAndQuotes(
   // eyecite-only behavior applies unchanged.
   const hasStatutes = statuteTableExists(db);
   const statuteHits = hasStatutes ? parseStatuteCites(text) : [];
+  // Title-existence probe for the statute_not_loaded split (indexed by the
+  // UNIQUE(source,title,…) key — O(1), never a scan).
+  const statuteTitleStmt = hasStatutes
+    ? db.prepare("SELECT 1 FROM statutes WHERE source = ? AND title = ? LIMIT 1")
+    : null;
   const overlapsStatute = (start: number, end: number): boolean =>
     statuteHits.some((s) => start < s.end && end > s.start);
+  // Extraction noise (live A/B draft, 2026-09-23): eyecite's UnknownCitation
+  // regex surfaces BARE section symbols — "§" with no title, section, or any
+  // other content — as citations. They carry no citation semantics, flood
+  // resolution denominators (12 of 20 cites in one real draft), and render
+  // as meaningless rows. A bare symbol is a tokenizer artifact, not an
+  // unverifiable cite; real statutory cites ("42 U.S.C. § 1983") carry
+  // content and ride the G4 statute path untouched.
+  const isBareSectionArtifact = (c: BridgeCitation): boolean =>
+    c.type === "unknown" && /^[\s§]*$/.test(c.text);
+
+  // Nearest preceding RESOLVED full citation — the antecedent that gives
+  // short/Id./supra forms their referent under chain semantics.
+  let lastFull: CitationCheck | undefined;
+  // Every verified full/short resolution so far — the chain a supra NAME
+  // may point into.
+  const resolvedChain: CitationCheck[] = [];
+  /** Supra-name match: the antecedent_guess (usually a surname) must be
+   *  CONTAINED in a resolved antecedent's case name, case-insensitively.
+   *  Containment, never equality or fuzz: "Roe" ⊆ "Roe v. Wade". */
+  const resolveSupraByName = (
+    name: string
+  ): Pick<LookupResult, "cluster_id" | "opinion_id" | "case_name"> | null => {
+    const needle = name.trim().toLowerCase();
+    if (needle.length < 3) return null;
+    for (let i = resolvedChain.length - 1; i >= 0; i--) {
+      const cn = (resolvedChain[i].case_name ?? "").toLowerCase();
+      if (cn.includes(needle)) {
+        const a = resolvedChain[i];
+        return {
+          cluster_id: a.cluster_id!,
+          opinion_id: a.opinion_id!,
+          case_name: a.case_name ?? null,
+        };
+      }
+    }
+    return null;
+  };
   for (const c of extracted) {
+    yield; // cooperative scheduling point (see async drain)
     if (c.error) {
       // One bad draft must not fail a batch — but it must not pass
       // silently either. Surface it as an unresolvable citation.
@@ -398,9 +659,64 @@ export function analyzeCitationsAndQuotes(
     // A span inside a full statutory cite is superseded by the statute
     // check below — reporting both would double-fail the same reference.
     if (overlapsStatute(c.start, c.end)) continue;
+    // Bare-§ tokenizer artifacts are noise, not citations — skip entirely
+    // (they are not reported, because there is nothing to verify).
+    if (isBareSectionArtifact(c)) continue;
     // Spans ride ON the check object: parallel-array indexing against the
     // input would silently desync.
     if (c.type !== "full") {
+      // Phase B rung 1: Id. and short forms resolve through the draft's
+      // own antecedent (see resolveShortForm / the id branch below). No
+      // resolution → the v1 honest annotation stands.
+      const shortRes =
+        c.type === "id"
+          ? // "Id." refers to the IMMEDIATELY preceding citation by
+            // definition; it resolves only when that antecedent verified —
+            // a broken chain lends no authority.
+            lastFull && lastFull.status === "verified"
+            ? {
+                cluster_id: lastFull.cluster_id!,
+                opinion_id: lastFull.opinion_id!,
+                case_name: lastFull.case_name ?? null,
+              }
+            : null
+          : c.type === "supra" && c.name
+          ? // Supra: the NAME is the referent. Match it against the party
+            // names of the draft's own RESOLVED antecedents (chainScan).
+            // Conservative containment: the antecedent_guess is a surname
+            // fragment, so it must appear inside a resolved antecedent's
+            // name — never the reverse, never fuzzy.
+            resolveSupraByName(c.name)
+          : resolveShortForm(c.volume, c.reporter, lastFull);
+      if (shortRes) {
+        const auth = db
+          .prepare(
+            `SELECT max(a.treatment_flags) AS flags FROM authority a
+             JOIN opinions o ON o.id = a.opinion_id WHERE o.cluster_id = ?`
+          )
+          .get(shortRes.cluster_id) as { flags: number | null } | undefined;
+        citations.push({
+          citation_text: c.text,
+          corrected: c.corrected,
+          volume: c.volume,
+          reporter: c.reporter,
+          page: c.page,
+          form: c.type,
+          cite_start: c.start,
+          cite_end: c.end,
+          status: "verified",
+          pin_unverified: c.pin_cite != null,
+          cite_pin_raw: c.pin_cite,
+          opinion_id: shortRes.opinion_id,
+          cluster_id: shortRes.cluster_id,
+          case_name: shortRes.case_name,
+          inferred_treatment: treatmentLabels(auth?.flags),
+          proven_treatment: provenTreatment(db, shortRes.opinion_id) ?? undefined,
+        });
+        if (c.pin_cite) yield* checkPinFor(citations[citations.length - 1], shortRes.opinion_id, lastFull?.page ?? null);
+        resolvedChain.push(citations[citations.length - 1]);
+        continue;
+      }
       citations.push({
         citation_text: c.text,
         corrected: c.corrected,
@@ -425,6 +741,9 @@ export function analyzeCitationsAndQuotes(
       c.page ?? ""
     );
     if (!res) {
+      // A full cite that fails to resolve must NOT become the antecedent
+      // for later short forms — a broken chain cannot lend authority.
+      lastFull = undefined;
       // Out-of-corpus reporters (WL/Lexis): unresolvable BY CONSTRUCTION,
       // not evidence of fabrication. Annotate, do not fail — the corpus
       // will never carry these numbers (probe01: WL resolve rate 2.65%,
@@ -479,24 +798,47 @@ export function analyzeCitationsAndQuotes(
       cite_end: c.end,
       status: "verified",
       pin_unverified: c.pin_cite != null,
+      cite_pin_raw: c.pin_cite,
       opinion_id: res.opinion_id,
       cluster_id: res.cluster_id,
       case_name: res.case_name,
       inferred_treatment: treatmentLabels(auth?.flags),
+      proven_treatment: provenTreatment(db, res.opinion_id) ?? undefined,
       ...(res.all_cluster_ids && res.all_cluster_ids.length > 1
         ? { ambiguous_cluster_ids: res.all_cluster_ids }
         : {}),
     });
+    // Rung 3: pin check rides the resolution — the anchors parse from the
+    // (memoized) opinion text.
+    if (c.pin_cite) {
+      yield* checkPinFor(citations[citations.length - 1], res.opinion_id, c.page);
+    }
+    // The antecedent for later short forms: only a RESOLVED, UNAMBIGUOUS
+    // full cite can lend its identity to "at 351" / "Id." references.
+    if (!(res.all_cluster_ids && res.all_cluster_ids.length > 1)) {
+      lastFull = citations[citations.length - 1];
+      resolvedChain.push(lastFull);
+    }
   }
 
   // Statutory citations, resolved against the statutes table. A quoted
   // statute is checked by the quote ladder below, attributed to this check.
   for (const s of statuteHits) {
+    yield;
     const row = resolveStatute(db, s.source, s.title, s.section);
     const reporter = s.source === ("usc" as StatuteSource) ? "U.S.C." : "C.F.R.";
     // A subsection pin ("§ 1983(a)") rides after the cite; like case pin
     // pages it is annotated, not verified (v1).
     const pinFollows = /^\s*\(/.test(text.slice(s.end));
+    // Distinguish a wrong cite from a data gap: if the title exists but the
+    // section doesn't, the miss is the cite; if the whole title is absent
+    // (e.g. a US Code title not yet ingested via `usc-govinfo`), the corpus
+    // cannot judge the cite and says so instead of implying the cite is wrong.
+    const titleLoaded = row
+      ? true
+      : statuteTitleStmt
+        ? statuteTitleStmt.get(s.source, s.title) != null
+        : false;
     citations.push({
       citation_text: s.text,
       corrected: s.text,
@@ -506,7 +848,7 @@ export function analyzeCitationsAndQuotes(
       form: "statute",
       cite_start: s.start,
       cite_end: s.end,
-      status: row ? "verified" : "unresolved_citation",
+      status: row ? "verified" : titleLoaded ? "unresolved_citation" : "statute_not_loaded",
       pin_unverified: pinFollows,
       ...(row ? { statute_id: row.id, case_name: `${statuteLabel(row)} — ${row.heading}` } : {}),
     });
@@ -516,6 +858,7 @@ export function analyzeCitationsAndQuotes(
   const spans = extractQuotedSpans(text);
   const quotes: QuoteCheck[] = [];
   for (const span of spans) {
+    yield;
     // [RECORD] content quotes the client's own facts; it is not a corpus
     // claim (§5.3) and has no citation to attribute to.
     if (inSkippedRange(span.start, span.end, opts.skipQuoteRanges)) continue;
@@ -569,12 +912,15 @@ export function analyzeCitationsAndQuotes(
         .get(target.statute_id) as { text: string } | undefined;
       sourceText = row?.text ?? "";
     } else {
-      const row = db
-        .prepare("SELECT text FROM opinions WHERE id = ?")
-        .get(target.opinion_id) as { text: string } | undefined;
-      sourceText = row?.text ?? "";
+      const loaded = yield* readOpinionTextGen(db, target.opinion_id!);
+      sourceText = loaded ?? "";
     }
-    const m = findQuote(sourceText, span.quote);
+    const mKey = quoteMemoKey(sourceText, span.quote);
+    let m = quoteMemo.get(mKey);
+    if (!m) {
+      m = yield* findQuoteGen(sourceText, span.quote);
+      quoteMemo.set(mKey, m);
+    }
     if (m.found) {
       quotes.push({
         quote: span.quote,
@@ -604,22 +950,33 @@ export function analyzeCitationsAndQuotes(
     let sibVerified = false;
     if (target.statute_id == null && clusterIds.length > 0) {
       const placeholders = clusterIds.map(() => "?").join(",");
+      // Ids only — texts load through the chunked reader below (one blob
+      // per scheduling unit) instead of one giant synchronous .all().
       const sibs = db
         .prepare(
-          `SELECT id, cluster_id, case_name, text FROM opinions
+          `SELECT id, cluster_id, case_name FROM opinions
            WHERE cluster_id IN (${placeholders}) AND id != ? AND blocked = 0`
         )
         .all(...clusterIds, target.opinion_id) as Array<{
         id: number;
         cluster_id: number;
         case_name: string | null;
-        text: string;
       }>;
       // Sibling candidates are the cluster's LIVE opinions: verification
       // never silently relies on de-indexed (blocked) text — same contract
       // as findTrueSource, which never names a blocked opinion.
       for (const sib of sibs) {
-        const sm = findQuote(sib.text, span.quote);
+        // One sibling opinion is one scheduling unit — its chunked read
+        // plus findQuote may each yield internally.
+        yield;
+        const text = yield* readOpinionTextGen(db, sib.id);
+        if (text == null) continue;
+        const sKey = quoteMemoKey(text, span.quote);
+        let sm = quoteMemo.get(sKey);
+        if (!sm) {
+          sm = yield* findQuoteGen(text, span.quote);
+          quoteMemo.set(sKey, sm);
+        }
         if (!sm.found) continue;
         quotes.push({
           quote: span.quote,
@@ -652,9 +1009,20 @@ export function analyzeCitationsAndQuotes(
     //   • the corpus has the span in some OTHER case → quote_wrong_case
     //     (fail with the true source shown);
     //   • nowhere at all → plain quote_not_found.
-    const source = target.statute_id != null
-      ? undefined
-      : findTrueSource(db, span.quote, null);
+    let source: QuoteCheck["true_source"];
+    if (target.statute_id != null) {
+      source = undefined;
+    } else {
+      // Memoized true-source probing: a draft that fails N quotes of the
+      // same span probes N×90 candidates — identical work each time.
+      const key = `${span.quote}\u0000`;
+      if (trueSourceMemo.has(key)) {
+        source = trueSourceMemo.get(key);
+      } else {
+        source = yield* findTrueSource(db, span.quote, null, quoteMemo, quoteMemoKey);
+        trueSourceMemo.set(key, source);
+      }
+    }
     if (source && clusterIds.includes(source.cluster_id)) {
       quotes.push({
         quote: span.quote,
@@ -676,6 +1044,22 @@ export function analyzeCitationsAndQuotes(
     });
   }
 
+  // ---- F2 support evidence (Phase F) — advisory only -------------------
+  // For every verified citation, surface the corpus passage backing it
+  // (pin-window anchored). Never gates: verification judged citations and
+  // quotes; this adds the "show me the text" layer for the user.
+  let supports: SupportEvidence[] | undefined;
+  try {
+    const cand: SupportEvidence[] = [];
+    for (const c of citations) {
+      const ev = supportForCitation(db, c, text);
+      if (ev) cand.push(ev);
+    }
+    if (cand.length > 0) supports = cand;
+  } catch {
+    // Advisory pass: any failure degrades to "no evidence", never an error.
+  }
+
   // ---- verdict ------------------------------------------------------------
   const summary: Record<string, number> = {};
   for (const c of citations) summary[`citation:${c.status}`] = (summary[`citation:${c.status}`] ?? 0) + 1;
@@ -693,6 +1077,43 @@ export function analyzeCitationsAndQuotes(
     overall: anyUnresolved || anyQuoteFail ? "fail" : "pass",
     citations,
     quotes,
+    ...(supports ? { supports } : {}),
     summary,
   };
+}
+
+/**
+ * Sync drain — byte-identical to running the analysis as one direct
+ * function (tests, G2 evals, offline audits all keep this contract).
+ */
+export function analyzeCitationsAndQuotes(
+  db: Database.Database,
+  extracted: BridgeCitation[],
+  text: string,
+  opts: AnalyzeOptions = {}
+): VerificationReport {
+  const gen = analyzeCitationsAndQuotesGen(db, extracted, text, opts);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * Cooperative drain — same result, but the event loop gets a turn between
+ * analysis units, so a large verification (CiteGuard, the pipeline) can no
+ * longer pin the single-threaded server for the full duration.
+ */
+export async function analyzeCitationsAndQuotesAsync(
+  db: Database.Database,
+  extracted: BridgeCitation[],
+  text: string,
+  opts: AnalyzeOptions = {}
+): Promise<VerificationReport> {
+  const gen = analyzeCitationsAndQuotesGen(db, extracted, text, opts);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
